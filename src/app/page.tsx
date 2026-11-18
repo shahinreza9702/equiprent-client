@@ -1,5 +1,6 @@
 
 import { Navbar } from "@/components/layout/navbar";
+import { HeroSection } from "@/components/home/hero-section";
 
 export default function Home() {
   return (
@@ -7,7 +8,7 @@ export default function Home() {
       <Navbar />
 
       <main className="flex-1">
-        {/* Homepage sections will be added here */}
+        <HeroSection />
       </main>
     </>
   );
