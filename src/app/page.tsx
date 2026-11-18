@@ -6,6 +6,7 @@ import { CategoriesSection } from "@/components/home/categories/categories-secti
 import { WhyChooseUsSection } from "@/components/home/why-choose-us/why-choose-us-section";
 import { CustomerReviewsSection } from "@/components/home/customer-reviews/customer-reviews-section";
 import { HowItWorksSection } from "@/components/home/how-it-works/how-it-works-section";
+import { CtaSection } from "@/components/home/cta/cta-section";
 
 export default function Home() {
   return (
@@ -19,6 +20,7 @@ export default function Home() {
         <WhyChooseUsSection />
         <CustomerReviewsSection />
         <HowItWorksSection />
+        <CtaSection />
       </main>
     </>
   );
