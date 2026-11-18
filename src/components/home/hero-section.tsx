@@ -2,11 +2,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
-  MapPin,
-  Search,
   ShieldCheck,
   Truck,
 } from "lucide-react";
@@ -27,7 +26,6 @@ export function HeroSection() {
       <div className="pointer-events-none absolute -bottom-48 -left-40 size-[450px] rounded-full bg-white/5 blur-3xl" />
 
       <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[1fr_1.05fr] lg:gap-12 lg:px-8 lg:py-24">
-
         {/* Left: Hero Content */}
         <motion.div
           initial={{ opacity: 0, y: 25 }}
@@ -53,69 +51,31 @@ export function HeroSection() {
             when you need it.
           </p>
 
-          {/* Search Panel */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.2 }}
-            className="mt-9 rounded-2xl bg-white p-3 shadow-2xl shadow-black/20 sm:p-4"
-          >
-            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+          {/* Hero Actions */}
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <Button
+              size="lg"
+              className="h-12 gap-2 rounded-xl bg-brand-accent px-7 font-semibold text-primary hover:bg-brand-accent/90"
+              render={<Link href="/equipment" />}
+              nativeButton={false}
+            >
+              Explore Equipment
+              <ArrowRight className="size-4" />
+            </Button>
 
-              {/* Equipment Search */}
-              <div className="flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted">
-                <Search className="size-5 shrink-0 text-muted-foreground" />
-
-                <div className="min-w-0 flex-1">
-                  <label
-                    htmlFor="equipment-search"
-                    className="block text-xs font-semibold text-primary"
-                  >
-                    What do you need?
-                  </label>
-
-                  <input
-                    id="equipment-search"
-                    type="search"
-                    placeholder="Search equipment..."
-                    className="mt-1 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                  />
-                </div>
-              </div>
-
-              {/* Location Search */}
-              <div className="flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted sm:border-l sm:border-border">
-                <MapPin className="size-5 shrink-0 text-muted-foreground" />
-
-                <div className="min-w-0 flex-1">
-                  <label
-                    htmlFor="equipment-location"
-                    className="block text-xs font-semibold text-primary"
-                  >
-                    Location
-                  </label>
-
-                  <input
-                    id="equipment-location"
-                    type="text"
-                    placeholder="Enter your location"
-                    className="mt-1 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                  />
-                </div>
-              </div>
-
-              <Button
-                size="lg"
-                className="h-12 gap-2 rounded-xl bg-brand-accent px-6 font-semibold text-primary hover:bg-brand-accent/90"
-              >
-                Find Equipment
-                <ArrowRight className="size-4" />
-              </Button>
-            </div>
-          </motion.div>
+            <Button
+              size="lg"
+              variant="outline"
+              className="h-12 rounded-xl border-white/30 bg-white/5 px-7 font-semibold text-white hover:bg-white/10 hover:text-white"
+              render={<Link href="/register" />}
+              nativeButton={false}
+            >
+              List Your Equipment
+            </Button>
+          </div>
 
           {/* Benefits */}
-          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-4">
+          <div className="mt-9 flex flex-wrap gap-x-6 gap-y-4">
             {benefits.map((benefit) => {
               const Icon = benefit.icon;
 
@@ -142,7 +102,7 @@ export function HeroSection() {
           {/* Main Image */}
           <div className="group relative aspect-[4/3] overflow-hidden rounded-3xl border border-white/15 bg-white/10 shadow-2xl shadow-black/25">
             <Image
-              src="/images/hero/equiprent-equipment-photo.png" 
+              src="/images/hero/equiprent-equipment-photo.png"
               alt="Yellow excavator available for equipment rental"
               fill
               priority
