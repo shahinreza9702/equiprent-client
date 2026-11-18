@@ -7,6 +7,7 @@ import { WhyChooseUsSection } from "@/components/home/why-choose-us/why-choose-u
 import { CustomerReviewsSection } from "@/components/home/customer-reviews/customer-reviews-section";
 import { HowItWorksSection } from "@/components/home/how-it-works/how-it-works-section";
 import { CtaSection } from "@/components/home/cta/cta-section";
+import { Footer } from "@/components/layout/footer/footer";
 
 export default function Home() {
   return (
@@ -22,6 +23,7 @@ export default function Home() {
         <HowItWorksSection />
         <CtaSection />
       </main>
+      <Footer />
     </>
   );
 }
