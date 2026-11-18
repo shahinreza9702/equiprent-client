@@ -142,7 +142,7 @@ export function HeroSection() {
           {/* Main Image */}
           <div className="group relative aspect-[4/3] overflow-hidden rounded-3xl border border-white/15 bg-white/10 shadow-2xl shadow-black/25">
             <Image
-              src="/images/hero/equiprent-equipment-photo.png"
+              src="/images/hero/equiprent-equipment-photo.png" 
               alt="Yellow excavator available for equipment rental"
               fill
               priority
