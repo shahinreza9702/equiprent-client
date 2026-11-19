@@ -9,9 +9,17 @@ export interface Equipment {
   rating: number;
   image: string;
   featured: boolean;
+  description: string;
+  owner: {
+    name: string;
+    rating: number;
+    verified: boolean;
+  };
 }
 
+
 export const equipmentData: Equipment[] = [
+
   {
     id: "eq-001",
     name: "Professional Excavator",
@@ -22,7 +30,15 @@ export const equipmentData: Equipment[] = [
     rating: 4.9,
     image: "/images/equipment/excavator.jpg",
     featured: true,
+    description:
+      "A professional-grade excavator suitable for construction, earthmoving, and other heavy-duty projects.",
+    owner: {
+      name: "Demo Equipment Owner",
+      rating: 4.8,
+      verified: true,
+    },
   },
+
   {
     id: "eq-002",
     name: "Canon EOS R5 Camera",
@@ -33,6 +49,12 @@ export const equipmentData: Equipment[] = [
     rating: 4.8,
     image: "/images/equipment/camera.jpg",
     featured: true,
+    description: "A high-end mirrorless camera for professional photography.",
+    owner: {
+      name: "Demo Equipment Owner",
+      rating: 4.8,
+      verified: true,
+    },
   },
   {
     id: "eq-003",
@@ -44,6 +66,12 @@ export const equipmentData: Equipment[] = [
     rating: 4.7,
     image: "/images/equipment/hiace.jpg",
     featured: true,
+    description: "A reliable van for transportation and cargo needs.",
+    owner: {
+      name: "Demo Equipment Owner",
+      rating: 4.7,
+      verified: true,
+    },
   },
   {
     id: "eq-004",
@@ -55,6 +83,12 @@ export const equipmentData: Equipment[] = [
     rating: 4.9,
     image: "/images/equipment/generator.jpg",
     featured: true,
+    description: "A powerful generator for backup power and construction sites.",
+    owner: {
+      name: "Demo Equipment Owner",
+      rating: 4.9,
+      verified: true,
+    },
   },
   {
     id: "eq-005",
@@ -66,6 +100,12 @@ export const equipmentData: Equipment[] = [
     rating: 4.6,
     image: "/images/equipment/drone.jpg",
     featured: true,
+    description: "A versatile drone for aerial photography and videography.",
+    owner: {
+      name: "Demo Equipment Owner",
+      rating: 4.6,
+      verified: true,
+    },
   },
   {
     id: "eq-006",
@@ -77,5 +117,11 @@ export const equipmentData: Equipment[] = [
     rating: 4.8,
     image: "/images/equipment/sound-system.jpg",
     featured: true,
+    description: "A high-quality sound system for events and performances.",
+    owner: {
+      name: "Demo Equipment Owner",
+      rating: 4.8,
+      verified: true,
+    },
   },
 ];
