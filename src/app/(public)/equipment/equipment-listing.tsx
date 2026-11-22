@@ -20,6 +20,8 @@ const categories = [
   "Event Equipment",
 ];
 
+const PAGE_LIMIT = 12;
+
 interface EquipmentListResponse {
   equipments: EquipmentCardData[];
   pagination: {
@@ -39,17 +41,22 @@ export function EquipmentListing({
   initialSearch = "",
   initialLocation = "",
 }: EquipmentListingProps) {
+  // Search and filter states
   const [search, setSearch] = useState(initialSearch);
   const [location, setLocation] = useState(initialLocation);
   const [category, setCategory] = useState("All Categories");
-
   const [rentalType, setRentalType] = useState("all");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState("newest");
 
+  // Equipment and pagination states
   const [equipments, setEquipments] = useState<EquipmentCardData[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Request states
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -59,8 +66,9 @@ export function EquipmentListing({
 
     const fetchEquipments = async () => {
       const query = new URLSearchParams({
-        page: "1",
-        limit: "12",
+        page: String(page),
+        limit: String(PAGE_LIMIT),
+        sort,
       });
 
       if (search.trim()) {
@@ -87,8 +95,6 @@ export function EquipmentListing({
         query.set("maxPrice", maxPrice);
       }
 
-      query.set("sort", sort);
-
       try {
         const response = await apiRequest<EquipmentListResponse>(
           `/equipment?${query.toString()}`,
@@ -101,12 +107,15 @@ export function EquipmentListing({
         if (isMounted) {
           setEquipments(response.data.equipments);
           setTotal(response.data.pagination.total);
+          setTotalPages(response.data.pagination.totalPages);
           setError("");
         }
       } catch (err) {
         if (isMounted) {
           setEquipments([]);
           setTotal(0);
+          setTotalPages(1);
+
           setError(
             err instanceof Error
               ? err.message
@@ -133,11 +142,19 @@ export function EquipmentListing({
     minPrice,
     maxPrice,
     sort,
+    page,
     retry,
   ]);
 
-  const clearFilters = () => {
+  // Reset pagination when filters change
+  const resetPage = () => {
+    setPage(1);
     setIsLoading(true);
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    resetPage();
     setSearch("");
     setLocation("");
     setCategory("All Categories");
@@ -147,15 +164,33 @@ export function EquipmentListing({
     setSort("newest");
   };
 
+  // Retry failed request
   const handleRetry = () => {
     setIsLoading(true);
     setRetry((value) => value + 1);
   };
 
+  // Pagination handlers
+  const handlePreviousPage = () => {
+    if (page > 1) {
+      setIsLoading(true);
+      setPage((currentPage) => currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (page < totalPages) {
+      setIsLoading(true);
+      setPage((currentPage) => currentPage + 1);
+    }
+  };
+
   return (
     <div>
+      {/* Search and filters */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
         <div className="grid gap-4 md:grid-cols-3">
+          {/* Equipment search */}
           <div>
             <label
               htmlFor="equipment-search"
@@ -172,7 +207,7 @@ export function EquipmentListing({
                 type="search"
                 value={search}
                 onChange={(event) => {
-                  setIsLoading(true);
+                  resetPage();
                   setSearch(event.target.value);
                 }}
                 placeholder="Search equipment..."
@@ -181,6 +216,7 @@ export function EquipmentListing({
             </div>
           </div>
 
+          {/* Location filter */}
           <div>
             <label
               htmlFor="equipment-location"
@@ -197,7 +233,7 @@ export function EquipmentListing({
                 type="text"
                 value={location}
                 onChange={(event) => {
-                  setIsLoading(true);
+                  resetPage();
                   setLocation(event.target.value);
                 }}
                 placeholder="Enter location..."
@@ -206,6 +242,7 @@ export function EquipmentListing({
             </div>
           </div>
 
+          {/* Category filter */}
           <div>
             <label
               htmlFor="equipment-category"
@@ -221,7 +258,7 @@ export function EquipmentListing({
                 id="equipment-category"
                 value={category}
                 onChange={(event) => {
-                  setIsLoading(true);
+                  resetPage();
                   setCategory(event.target.value);
                 }}
                 className="h-11 w-full appearance-none rounded-xl border border-input bg-background pl-10 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
@@ -236,7 +273,9 @@ export function EquipmentListing({
           </div>
         </div>
 
+        {/* Additional filters */}
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Rental type */}
           <div>
             <label
               htmlFor="equipment-rental-type"
@@ -249,7 +288,7 @@ export function EquipmentListing({
               id="equipment-rental-type"
               value={rentalType}
               onChange={(event) => {
-                setIsLoading(true);
+                resetPage();
                 setRentalType(event.target.value);
               }}
               className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
@@ -261,6 +300,7 @@ export function EquipmentListing({
             </select>
           </div>
 
+          {/* Minimum price */}
           <div>
             <label
               htmlFor="equipment-min-price"
@@ -275,7 +315,7 @@ export function EquipmentListing({
               min="0"
               value={minPrice}
               onChange={(event) => {
-                setIsLoading(true);
+                resetPage();
                 setMinPrice(event.target.value);
               }}
               placeholder="Minimum price"
@@ -283,6 +323,7 @@ export function EquipmentListing({
             />
           </div>
 
+          {/* Maximum price */}
           <div>
             <label
               htmlFor="equipment-max-price"
@@ -297,7 +338,7 @@ export function EquipmentListing({
               min="0"
               value={maxPrice}
               onChange={(event) => {
-                setIsLoading(true);
+                resetPage();
                 setMaxPrice(event.target.value);
               }}
               placeholder="Maximum price"
@@ -305,6 +346,7 @@ export function EquipmentListing({
             />
           </div>
 
+          {/* Sorting */}
           <div>
             <label
               htmlFor="equipment-sort"
@@ -317,7 +359,7 @@ export function EquipmentListing({
               id="equipment-sort"
               value={sort}
               onChange={(event) => {
-                setIsLoading(true);
+                resetPage();
                 setSort(event.target.value);
               }}
               className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
@@ -330,6 +372,7 @@ export function EquipmentListing({
         </div>
       </div>
 
+      {/* Equipment listing */}
       <div className="mt-10">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -376,14 +419,49 @@ export function EquipmentListing({
             </button>
           </div>
         ) : equipments.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {equipments.map((equipment) => (
-              <EquipmentCard
-                key={equipment._id}
-                equipment={equipment}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {equipments.map((equipment) => (
+                <EquipmentCard
+                  key={equipment._id}
+                  equipment={equipment}
+                />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-border pt-6 sm:flex-row">
+                <p className="text-sm text-muted-foreground">
+                  Page {page} of {totalPages}
+                </p>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handlePreviousPage}
+                    disabled={page <= 1 || isLoading}
+                    className="rounded-xl border border-input px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+
+                  <span className="text-sm font-medium text-primary">
+                    {page} / {totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleNextPage}
+                    disabled={page >= totalPages || isLoading}
+                    className="rounded-xl border border-input px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <div className="rounded-2xl border border-dashed border-border px-6 py-16 text-center">
             <Search className="mx-auto size-10 text-muted-foreground/50" />
