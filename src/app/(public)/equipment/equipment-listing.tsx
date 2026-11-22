@@ -47,6 +47,7 @@ export function EquipmentListing({
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -105,13 +106,18 @@ export function EquipmentListing({
     return () => {
       isMounted = false;
     };
-  }, [search, location, category]);
+  }, [search, location, category, retry]);
 
   const clearFilters = () => {
     setIsLoading(true);
     setSearch("");
     setLocation("");
     setCategory("All Categories");
+  };
+
+  const handleRetry = () => {
+    setIsLoading(true);
+    setRetry((value) => value + 1);
   };
 
   return (
@@ -238,7 +244,7 @@ export function EquipmentListing({
 
             <button
               type="button"
-              onClick={() => setIsLoading(true)}
+              onClick={handleRetry}
               className="mt-4 text-sm font-semibold text-primary hover:text-brand-accent"
             >
               Try again
