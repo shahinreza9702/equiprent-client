@@ -2,7 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Eye,
@@ -13,9 +14,62 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/providers/auth-provider";
+import { apiRequest, ApiError } from "@/lib/api";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { refreshUser } = useAuth();
+
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    setError("");
+    setIsLoading(true);
+
+    try {
+      await apiRequest("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const currentUser = await refreshUser();
+
+      if (!currentUser) {
+        throw new Error(
+          "Login succeeded, but your session could not be verified. Please try again.",
+        );
+      }
+
+      const dashboardRoutes = {
+        customer: "/dashboard",
+        owner: "/owner-dashboard",
+        admin: "/admin-dashboard",
+      } as const;
+
+      router.replace(dashboardRoutes[currentUser.role]);
+      router.refresh();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12 sm:px-6">
@@ -98,10 +152,7 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <form
-              className="mt-8 space-y-5"
-              onSubmit={(event) => event.preventDefault()}
-            >
+            <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
               {/* Email */}
               <div>
                 <label
@@ -121,6 +172,8 @@ export default function LoginPage() {
                     autoComplete="email"
                     placeholder="you@example.com"
                     required
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
                     className="h-full w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 </div>
@@ -154,6 +207,8 @@ export default function LoginPage() {
                     autoComplete="current-password"
                     placeholder="Enter your password"
                     required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
                     className="h-full w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                   />
 
@@ -171,6 +226,16 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Error Message */}
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                >
+                  {error}
+                </p>
+              )}
 
               {/* Remember Me */}
               <div className="flex items-center gap-2">
@@ -192,9 +257,10 @@ export default function LoginPage() {
               {/* Submit */}
               <Button
                 type="submit"
+                disabled={isLoading}
                 className="h-12 w-full rounded-xl bg-brand-accent font-semibold text-primary hover:bg-brand-accent/90"
               >
-                Sign In
+                {isLoading ? "Signing In..." : "Sign In"}
               </Button>
             </form>
 
