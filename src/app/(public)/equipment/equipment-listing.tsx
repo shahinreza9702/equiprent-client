@@ -1,11 +1,14 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MapPin, Search, SlidersHorizontal } from "lucide-react";
 
-import { EquipmentCard } from "@/components/home/featured-equipment/equipment-card";
-import { equipmentData } from "@/components/home/featured-equipment/equipment-data";
+import {
+  EquipmentCard,
+  type EquipmentCardData,
+} from "@/components/home/featured-equipment/equipment-card";
+import { apiRequest } from "@/lib/api";
 
 const categories = [
   "All Categories",
@@ -16,6 +19,16 @@ const categories = [
   "Electronics",
   "Event Equipment",
 ];
+
+interface EquipmentListResponse {
+  equipments: EquipmentCardData[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
 
 interface EquipmentListingProps {
   initialSearch?: string;
@@ -30,24 +43,79 @@ export function EquipmentListing({
   const [location, setLocation] = useState(initialLocation);
   const [category, setCategory] = useState("All Categories");
 
-  const filteredEquipment = equipmentData.filter((equipment) => {
-    const matchesSearch =
-      equipment.name.toLowerCase().includes(search.toLowerCase()) ||
-      equipment.category.toLowerCase().includes(search.toLowerCase());
+  const [equipments, setEquipments] = useState<EquipmentCardData[]>([]);
+  const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
-    const matchesLocation = equipment.location
-      .toLowerCase()
-      .includes(location.toLowerCase());
+  useEffect(() => {
+    let isMounted = true;
 
-    const matchesCategory =
-      category === "All Categories" || equipment.category === category;
+    const fetchEquipments = async () => {
+      const query = new URLSearchParams({
+        page: "1",
+        limit: "12",
+      });
 
-    return matchesSearch && matchesLocation && matchesCategory;
-  });
+      if (search.trim()) {
+        query.set("search", search.trim());
+      }
+
+      if (location.trim()) {
+        query.set("location", location.trim());
+      }
+
+      if (category !== "All Categories") {
+        query.set("category", category);
+      }
+
+      try {
+        const response = await apiRequest<EquipmentListResponse>(
+          `/equipment?${query.toString()}`,
+        );
+
+        if (!response.data) {
+          throw new Error("Equipment data was not returned.");
+        }
+
+        if (isMounted) {
+          setEquipments(response.data.equipments);
+          setTotal(response.data.pagination.total);
+          setError("");
+        }
+      } catch (err) {
+        if (isMounted) {
+          setEquipments([]);
+          setTotal(0);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load equipment. Please try again.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void fetchEquipments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [search, location, category]);
+
+  const clearFilters = () => {
+    setIsLoading(true);
+    setSearch("");
+    setLocation("");
+    setCategory("All Categories");
+  };
 
   return (
     <div>
-      {/* Search and Filter */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
         <div className="grid gap-4 md:grid-cols-3">
           <div>
@@ -65,7 +133,10 @@ export function EquipmentListing({
                 id="equipment-search"
                 type="search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setIsLoading(true);
+                  setSearch(event.target.value);
+                }}
                 placeholder="Search equipment..."
                 className="h-11 w-full bg-transparent text-sm outline-none"
               />
@@ -87,7 +158,10 @@ export function EquipmentListing({
                 id="equipment-location"
                 type="text"
                 value={location}
-                onChange={(event) => setLocation(event.target.value)}
+                onChange={(event) => {
+                  setIsLoading(true);
+                  setLocation(event.target.value);
+                }}
                 placeholder="Enter location..."
                 className="h-11 w-full bg-transparent text-sm outline-none"
               />
@@ -108,7 +182,10 @@ export function EquipmentListing({
               <select
                 id="equipment-category"
                 value={category}
-                onChange={(event) => setCategory(event.target.value)}
+                onChange={(event) => {
+                  setIsLoading(true);
+                  setCategory(event.target.value);
+                }}
                 className="h-11 w-full appearance-none rounded-xl border border-input bg-background pl-10 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
               >
                 {categories.map((item) => (
@@ -122,7 +199,6 @@ export function EquipmentListing({
         </div>
       </div>
 
-      {/* Results */}
       <div className="mt-10">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -131,27 +207,50 @@ export function EquipmentListing({
             </h2>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              Showing {filteredEquipment.length} of {equipmentData.length} equipment items
+              Showing {equipments.length} of {total} equipment items
             </p>
           </div>
 
           <button
             type="button"
-            onClick={() => {
-              setSearch("");
-              setLocation("");
-              setCategory("All Categories");
-            }}
+            onClick={clearFilters}
             className="text-sm font-semibold text-primary transition-colors hover:text-brand-accent"
           >
             Clear Filters
           </button>
         </div>
 
-        {filteredEquipment.length > 0 ? (
+        {isLoading ? (
+          <div className="rounded-2xl border border-border px-6 py-16 text-center">
+            <p className="text-sm text-muted-foreground">
+              Loading equipment...
+            </p>
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-dashed border-border px-6 py-16 text-center">
+            <h3 className="text-lg font-semibold text-primary">
+              Unable to load equipment
+            </h3>
+
+            <p className="mt-2 text-sm text-muted-foreground">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setIsLoading(true)}
+              className="mt-4 text-sm font-semibold text-primary hover:text-brand-accent"
+            >
+              Try again
+            </button>
+          </div>
+        ) : equipments.length > 0 ? (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredEquipment.map((equipment) => (
-              <EquipmentCard key={equipment.id} equipment={equipment} />
+            {equipments.map((equipment) => (
+              <EquipmentCard
+                key={equipment._id}
+                equipment={equipment}
+              />
             ))}
           </div>
         ) : (
