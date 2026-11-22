@@ -14,6 +14,8 @@ import {
 
 import { Button } from "@/components/ui/button";
 
+export const instant = false;
+
 const stats = [
   {
     title: "Total Bookings",
