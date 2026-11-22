@@ -2,7 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { apiRequest, ApiError } from "@/lib/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -15,10 +16,34 @@ import { Button } from "@/components/ui/button";
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsSubmitted(true);
+
+    setError("");
+
+    try {
+      setIsLoading(true);
+
+      await apiRequest("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({
+          email: email.trim(),
+        }),
+      });
+
+      setIsSubmitted(true);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to process your request. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -130,6 +155,14 @@ export default function ForgotPasswordPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+                  {error && (
+                    <p
+                      className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive"
+                      role="alert"
+                    >
+                      {error}
+                    </p>
+                  )}
                   <div>
                     <label
                       htmlFor="email"
@@ -156,10 +189,11 @@ export default function ForgotPasswordPage() {
                   </div>
 
                   <Button
+                    disabled={isLoading}
                     type="submit"
                     className="h-12 w-full rounded-xl bg-brand-accent font-semibold text-primary hover:bg-brand-accent/90"
                   >
-                    Send Recovery Instructions
+                    {isLoading ? "Sending Instructions..." : "Send Recovery Instructions"}
                   </Button>
                 </form>
 
