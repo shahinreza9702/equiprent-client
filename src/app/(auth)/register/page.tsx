@@ -2,7 +2,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
+import { apiRequest, ApiError } from "@/lib/api";
 import {
     ArrowLeft,
     Eye,
@@ -16,12 +18,57 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default function RegisterPage() {
+    const router = useRouter();
+
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const [accountType, setAccountType] = useState("customer");
+
+    const [fullName, setFullName] = useState("");
+    const [email, setEmail] = useState("");
+    const [phone, setPhone] = useState("");
+
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+
     const [passwordError, setPasswordError] = useState("");
+    const [error, setError] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        setError("");
+        setPasswordError("");
+
+        if (password !== confirmPassword) {
+            setPasswordError("Passwords do not match.");
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+
+            await apiRequest("/users/register", {
+                method: "POST",
+                body: JSON.stringify({
+                    name: fullName.trim(),
+                    email: email.trim(),
+                    phone: phone.trim(),
+                    password,
+                }),
+            });
+
+            router.push("/login");
+        } catch (err) {
+            setError(
+                err instanceof ApiError
+                    ? err.message
+                    : "Unable to create your account. Please try again.",
+            );
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     return (
         <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12 sm:px-6">
@@ -30,6 +77,7 @@ export default function RegisterPage() {
             <div className="pointer-events-none absolute -bottom-40 -right-40 size-96 rounded-full bg-primary/10 blur-3xl" />
 
             <div className="relative grid w-full max-w-6xl overflow-hidden rounded-3xl border border-border bg-card shadow-xl lg:grid-cols-2">
+
                 {/* Left: Branding Panel */}
                 <div className="relative hidden flex-col justify-between overflow-hidden bg-primary p-10 text-white lg:flex">
                     <div className="absolute -right-24 -top-24 size-72 rounded-full border-[40px] border-white/5" />
@@ -68,6 +116,7 @@ export default function RegisterPage() {
                 {/* Right: Registration Form */}
                 <div className="flex items-center justify-center p-6 sm:p-10 lg:p-12">
                     <div className="w-full max-w-md">
+
                         {/* Mobile Brand */}
                         <Link
                             href="/"
@@ -90,6 +139,7 @@ export default function RegisterPage() {
                             Back to Home
                         </Link>
 
+                        {/* Heading */}
                         <div>
                             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-brand-accent">
                                 Get Started
@@ -104,19 +154,21 @@ export default function RegisterPage() {
                             </p>
                         </div>
 
+                        {/* Registration Form */}
                         <form
                             className="mt-7 space-y-4"
-                            onSubmit={(event) => {
-                                event.preventDefault();
-
-                                if (password !== confirmPassword) {
-                                    setPasswordError("Passwords do not match.");
-                                    return;
-                                }
-
-                                setPasswordError("");
-                            }}
+                            onSubmit={handleSubmit}
                         >
+                            {/* API Error */}
+                            {error && (
+                                <p
+                                    className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive"
+                                    role="alert"
+                                >
+                                    {error}
+                                </p>
+                            )}
+
                             {/* Full Name */}
                             <div>
                                 <label
@@ -136,6 +188,10 @@ export default function RegisterPage() {
                                         autoComplete="name"
                                         placeholder="Enter your full name"
                                         required
+                                        minLength={2}
+                                        maxLength={100}
+                                        value={fullName}
+                                        onChange={(event) => setFullName(event.target.value)}
                                         className="h-full w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                                     />
                                 </div>
@@ -160,6 +216,8 @@ export default function RegisterPage() {
                                         autoComplete="email"
                                         placeholder="you@example.com"
                                         required
+                                        value={email}
+                                        onChange={(event) => setEmail(event.target.value)}
                                         className="h-full w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                                     />
                                 </div>
@@ -184,6 +242,8 @@ export default function RegisterPage() {
                                         autoComplete="tel"
                                         placeholder="+880 1XXXXXXXXX"
                                         required
+                                        value={phone}
+                                        onChange={(event) => setPhone(event.target.value)}
                                         className="h-full w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                                     />
                                 </div>
@@ -196,40 +256,39 @@ export default function RegisterPage() {
                                 </legend>
 
                                 <div className="grid grid-cols-2 gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setAccountType("customer")}
-                                        aria-pressed={accountType === "customer"}
-                                        className={`rounded-xl border p-3 text-left transition-colors ${accountType === "customer"
-                                            ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                            : "border-input hover:border-primary/50"
-                                            }`}
+                                    {/* Customer */}
+                                    <div
+                                        aria-pressed="true"
+                                        className="rounded-xl border border-primary bg-primary/5 p-3 text-left ring-1 ring-primary"
                                     >
                                         <span className="block text-sm font-semibold text-primary">
                                             Customer
                                         </span>
+
                                         <span className="mt-1 block text-xs text-muted-foreground">
                                             Rent equipment
                                         </span>
-                                    </button>
+                                    </div>
 
+                                    {/* Equipment Owner */}
                                     <button
                                         type="button"
-                                        onClick={() => setAccountType("owner")}
-                                        aria-pressed={accountType === "owner"}
-                                        className={`rounded-xl border p-3 text-left transition-colors ${accountType === "owner"
-                                            ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                            : "border-input hover:border-primary/50"
-                                            }`}
+                                        disabled
+                                        className="cursor-not-allowed rounded-xl border border-input p-3 text-left opacity-50"
                                     >
                                         <span className="block text-sm font-semibold text-primary">
                                             Equipment Owner
                                         </span>
+
                                         <span className="mt-1 block text-xs text-muted-foreground">
                                             List equipment
                                         </span>
                                     </button>
                                 </div>
+
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    Equipment Owner registration will be available soon.
+                                </p>
                             </fieldset>
 
                             {/* Password */}
@@ -251,6 +310,7 @@ export default function RegisterPage() {
                                         autoComplete="new-password"
                                         placeholder="Create a password"
                                         minLength={8}
+                                        maxLength={72}
                                         required
                                         value={password}
                                         onChange={(event) => {
@@ -274,9 +334,13 @@ export default function RegisterPage() {
                                     </button>
                                 </div>
                             </div>
-                            
+
+                            {/* Password Error */}
                             {passwordError && (
-                                <p className="mt-2 text-xs font-medium text-destructive" role="alert">
+                                <p
+                                    className="text-xs font-medium text-destructive"
+                                    role="alert"
+                                >
                                     {passwordError}
                                 </p>
                             )}
@@ -300,6 +364,7 @@ export default function RegisterPage() {
                                         autoComplete="new-password"
                                         placeholder="Confirm your password"
                                         minLength={8}
+                                        maxLength={72}
                                         required
                                         value={confirmPassword}
                                         onChange={(event) => {
@@ -365,9 +430,10 @@ export default function RegisterPage() {
                             {/* Submit */}
                             <Button
                                 type="submit"
-                                className="h-12 w-full rounded-xl bg-brand-accent font-semibold text-primary hover:bg-brand-accent/90"
+                                disabled={isLoading}
+                                className="h-12 w-full rounded-xl bg-brand-accent font-semibold text-primary hover:bg-brand-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                Create Account
+                                {isLoading ? "Creating Account..." : "Create Account"}
                             </Button>
                         </form>
 
