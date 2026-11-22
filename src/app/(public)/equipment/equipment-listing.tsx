@@ -43,6 +43,11 @@ export function EquipmentListing({
   const [location, setLocation] = useState(initialLocation);
   const [category, setCategory] = useState("All Categories");
 
+  const [rentalType, setRentalType] = useState("all");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [sort, setSort] = useState("newest");
+
   const [equipments, setEquipments] = useState<EquipmentCardData[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,6 +74,20 @@ export function EquipmentListing({
       if (category !== "All Categories") {
         query.set("category", category);
       }
+
+      if (rentalType !== "all") {
+        query.set("rentalType", rentalType);
+      }
+
+      if (minPrice.trim()) {
+        query.set("minPrice", minPrice);
+      }
+
+      if (maxPrice.trim()) {
+        query.set("maxPrice", maxPrice);
+      }
+
+      query.set("sort", sort);
 
       try {
         const response = await apiRequest<EquipmentListResponse>(
@@ -106,13 +125,26 @@ export function EquipmentListing({
     return () => {
       isMounted = false;
     };
-  }, [search, location, category, retry]);
+  }, [
+    search,
+    location,
+    category,
+    rentalType,
+    minPrice,
+    maxPrice,
+    sort,
+    retry,
+  ]);
 
   const clearFilters = () => {
     setIsLoading(true);
     setSearch("");
     setLocation("");
     setCategory("All Categories");
+    setRentalType("all");
+    setMinPrice("");
+    setMaxPrice("");
+    setSort("newest");
   };
 
   const handleRetry = () => {
@@ -201,6 +233,99 @@ export function EquipmentListing({
                 ))}
               </select>
             </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label
+              htmlFor="equipment-rental-type"
+              className="mb-2 block text-sm font-semibold text-primary"
+            >
+              Rental Type
+            </label>
+
+            <select
+              id="equipment-rental-type"
+              value={rentalType}
+              onChange={(event) => {
+                setIsLoading(true);
+                setRentalType(event.target.value);
+              }}
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="all">All Rental Types</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="equipment-min-price"
+              className="mb-2 block text-sm font-semibold text-primary"
+            >
+              Minimum Price
+            </label>
+
+            <input
+              id="equipment-min-price"
+              type="number"
+              min="0"
+              value={minPrice}
+              onChange={(event) => {
+                setIsLoading(true);
+                setMinPrice(event.target.value);
+              }}
+              placeholder="Minimum price"
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="equipment-max-price"
+              className="mb-2 block text-sm font-semibold text-primary"
+            >
+              Maximum Price
+            </label>
+
+            <input
+              id="equipment-max-price"
+              type="number"
+              min="0"
+              value={maxPrice}
+              onChange={(event) => {
+                setIsLoading(true);
+                setMaxPrice(event.target.value);
+              }}
+              placeholder="Maximum price"
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="equipment-sort"
+              className="mb-2 block text-sm font-semibold text-primary"
+            >
+              Sort By
+            </label>
+
+            <select
+              id="equipment-sort"
+              value={sort}
+              onChange={(event) => {
+                setIsLoading(true);
+                setSort(event.target.value);
+              }}
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="newest">Newest First</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+            </select>
           </div>
         </div>
       </div>
