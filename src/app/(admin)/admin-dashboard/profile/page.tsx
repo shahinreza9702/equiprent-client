@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ShieldCheck,
   UserRound,
@@ -19,23 +19,75 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { apiRequest, ApiError } from "@/lib/api";
 
 type AdminProfile = {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  avatar?: string;
+};
+
+type ProfileForm = {
   fullName: string;
   email: string;
   phone: string;
   designation: string;
 };
 
-const initialProfile: AdminProfile = {
-  fullName: "Shahin Reza",
-  email: "admin@equiprent.com",
-  phone: "+880 1712-345678",
-  designation: "Platform Administrator",
+const getDesignation = (role: string) => {
+  const designations: Record<string, string> = {
+    admin: "Platform Administrator",
+    owner: "Equipment Owner",
+    customer: "Customer",
+  };
+
+  return designations[role] ?? role;
 };
 
+const getDisplayStatus = (status: string) =>
+  status.charAt(0).toUpperCase() + status.slice(1);
+
+const formatMemberSince = (date: string) => {
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Not available";
+  }
+
+  return parsedDate.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+};
+
+const mapProfile = (user: AdminProfile): ProfileForm => ({
+  fullName: user.name ?? "",
+  email: user.email ?? "",
+  phone: user.phone ?? "",
+  designation: getDesignation(user.role),
+});
+
 export default function AdminProfilePage() {
-  const [profile, setProfile] = useState(initialProfile);
+  const [user, setUser] = useState<AdminProfile | null>(null);
+  const [profile, setProfile] = useState<ProfileForm | null>(null);
+  const [savedProfile, setSavedProfile] =
+    useState<ProfileForm | null>(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const [pageError, setPageError] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+
+  const [profileMessage, setProfileMessage] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -48,47 +100,139 @@ export default function AdminProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] =
     useState(false);
 
-  const [passwordError, setPasswordError] = useState("");
-  const [profileMessage, setProfileMessage] = useState("");
-  const [passwordMessage, setPasswordMessage] = useState("");
+  const hasChanges =
+    profile !== null &&
+    savedProfile !== null &&
+    (profile.fullName !== savedProfile.fullName ||
+      profile.phone !== savedProfile.phone);
 
-  const [hasChanges, setHasChanges] = useState(false);
+  // Fetch authenticated administrator profile
+  const loadProfile = useCallback(async () => {
+    try {
+      const response =
+        await apiRequest<AdminProfile>("/users/me");
+
+      if (!response.data) {
+        throw new Error("Unable to load profile information.");
+      }
+
+      const fetchedUser = response.data;
+      const mappedProfile = mapProfile(fetchedUser);
+
+      setUser(fetchedUser);
+      setProfile(mappedProfile);
+      setSavedProfile(mappedProfile);
+      setPageError("");
+    } catch (error) {
+      setPageError(
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Failed to load your profile.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    void Promise.resolve().then(() => {
+      if (isActive) {
+        void loadProfile();
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [loadProfile]);
 
   const updateProfile = (
-    field: keyof AdminProfile,
-    value: string
+    field: "fullName" | "phone",
+    value: string,
   ) => {
-    setProfile((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
-
-    setHasChanges(true);
-    setProfileMessage("");
-  };
-
-  const handleProfileSubmit = (
-    event: React.FormEvent<HTMLFormElement>
-  ) => {
-    event.preventDefault();
-
-    setProfileMessage(
-      "Your profile changes have been saved successfully in this demo."
+    setProfile((previous) =>
+      previous
+        ? {
+          ...previous,
+          [field]: value,
+        }
+        : previous,
     );
 
-    setHasChanges(false);
-  };
-
-  const handleReset = () => {
-    setProfile(initialProfile);
-    setHasChanges(false);
+    setProfileError("");
     setProfileMessage("");
   };
 
-  const handlePasswordSubmit = (
-    event: React.FormEvent<HTMLFormElement>
+  // Update profile information
+  const handleProfileSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
+
+    if (!profile || !hasChanges) return;
+
+    setProfileError("");
+    setProfileMessage("");
+    setIsSavingProfile(true);
+
+    try {
+      const response = await apiRequest<AdminProfile>(
+        "/users/me",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: profile.fullName.trim(),
+            phone: profile.phone.trim(),
+          }),
+        },
+      );
+
+      if (!response.data) {
+        throw new Error("Unable to update profile.");
+      }
+
+      const updatedUser = response.data;
+      const mappedProfile = mapProfile(updatedUser);
+
+      setUser(updatedUser);
+      setProfile(mappedProfile);
+      setSavedProfile(mappedProfile);
+
+      setProfileMessage(
+        response.message || "Profile updated successfully.",
+      );
+    } catch (error) {
+      setProfileError(
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Failed to update your profile.",
+      );
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // Restore the last saved profile information
+  const handleReset = () => {
+    if (!savedProfile) return;
+
+    setProfile(savedProfile);
+    setProfileError("");
+    setProfileMessage("");
+  };
+
+  // Change authenticated user's password
+  const handlePasswordSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
     setPasswordError("");
     setPasswordMessage("");
 
@@ -99,7 +243,14 @@ export default function AdminProfilePage() {
 
     if (newPassword.length < 8) {
       setPasswordError(
-        "New password must be at least 8 characters long."
+        "New password must be at least 8 characters long.",
+      );
+      return;
+    }
+
+    if (newPassword.length > 72) {
+      setPasswordError(
+        "New password cannot exceed 72 characters.",
       );
       return;
     }
@@ -111,19 +262,108 @@ export default function AdminProfilePage() {
 
     if (currentPassword === newPassword) {
       setPasswordError(
-        "New password must be different from your current password."
+        "New password must be different from your current password.",
       );
       return;
     }
 
-    setPasswordMessage(
-      "Password validation successful. Actual password updates will be available after backend integration."
-    );
+    setIsChangingPassword(true);
 
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+    try {
+      const response = await apiRequest(
+        "/auth/change-password",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            currentPassword,
+            newPassword,
+          }),
+        },
+      );
+
+      setPasswordMessage(
+        response.message ||
+        "Password changed successfully. Please log in again.",
+      );
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      setPasswordError(
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Failed to change your password.",
+      );
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-64 items-center justify-center">
+        <p className="text-sm text-muted-foreground">
+          Loading profile information...
+        </p>
+      </div>
+    );
+  }
+
+  if (pageError || !user || !profile) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <p className="text-sm font-medium text-brand-accent">
+            Account Management
+          </p>
+
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-primary sm:text-3xl">
+            Admin Profile Settings
+          </h1>
+        </div>
+
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+          <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-600" />
+
+          <div>
+            <p className="text-sm font-semibold text-red-900">
+              Unable to load profile
+            </p>
+
+            <p className="mt-1 text-sm text-red-800">
+              {pageError || "Profile information is unavailable."}
+            </p>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setIsLoading(true);
+                void loadProfile();
+              }}
+            >
+              Try Again
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const initials =
+    profile.fullName
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "AD";
 
   return (
     <div className="space-y-8">
@@ -142,23 +382,6 @@ export default function AdminProfilePage() {
         </p>
       </div>
 
-      {/* Demo Notice */}
-      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <AlertCircle className="mt-0.5 size-5 shrink-0 text-blue-600" />
-
-        <div>
-          <p className="text-sm font-semibold text-blue-900">
-            Demo Preview
-          </p>
-
-          <p className="mt-1 text-sm leading-6 text-blue-800">
-            Profile information and password actions are frontend
-            demonstrations only. Changes are not saved to a database
-            or authentication service.
-          </p>
-        </div>
-      </div>
-
       {/* Profile Summary */}
       <section className="overflow-hidden rounded-xl border border-border bg-background">
         <div className="h-28 bg-primary" />
@@ -166,13 +389,13 @@ export default function AdminProfilePage() {
         <div className="px-5 pb-6 sm:px-7">
           <div className="-mt-11 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex items-end gap-4">
-              <div className="flex size-24 shrink-0 items-center justify-center rounded-2xl border-4 border-background bg-brand-accent text-3xl font-bold text-primary shadow-sm">
+              <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-background bg-brand-accent text-3xl font-bold text-primary shadow-sm">
                 {profile.fullName
                   .split(" ")
                   .map((part) => part[0])
                   .join("")
                   .slice(0, 2)
-                  .toUpperCase()}
+                  .toUpperCase() || initials}
               </div>
 
               <div className="pb-1">
@@ -220,7 +443,7 @@ export default function AdminProfilePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-medium text-primary">
-                  {profile.phone}
+                  {profile.phone || "Not provided"}
                 </p>
               </div>
             </div>
@@ -264,12 +487,11 @@ export default function AdminProfilePage() {
             <FormField
               label="Email Address"
               value={profile.email}
-              placeholder="Enter your email"
-              onChange={(value) =>
-                updateProfile("email", value)
-              }
+              placeholder="Email address"
+              onChange={() => undefined}
               icon={<Mail className="size-4" />}
               type="email"
+              disabled
             />
 
             <FormField
@@ -299,11 +521,12 @@ export default function AdminProfilePage() {
             </div>
           </div>
 
+          {profileError && (
+            <MessageBox type="error" message={profileError} />
+          )}
+
           {profileMessage && (
-            <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-              {profileMessage}
-            </div>
+            <MessageBox type="success" message={profileMessage} />
           )}
 
           <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-5">
@@ -311,14 +534,18 @@ export default function AdminProfilePage() {
               type="button"
               variant="outline"
               onClick={handleReset}
+              disabled={!hasChanges || isSavingProfile}
             >
               <RotateCcw className="size-4" />
               Reset Changes
             </Button>
 
-            <Button type="submit" disabled={!hasChanges}>
+            <Button
+              type="submit"
+              disabled={!hasChanges || isSavingProfile}
+            >
               <Save className="size-4" />
-              Save Changes
+              {isSavingProfile ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </form>
@@ -346,25 +573,29 @@ export default function AdminProfilePage() {
           <InfoItem
             icon={<ShieldCheck className="size-4" />}
             label="Account Role"
-            value="Administrator"
+            value={getDisplayStatus(user.role)}
           />
 
           <InfoItem
             icon={<CheckCircle2 className="size-4" />}
             label="Account Status"
-            value="Active"
+            value={getDisplayStatus(user.status)}
           />
 
           <InfoItem
             icon={<CalendarDays className="size-4" />}
             label="Member Since"
-            value="November 2026"
+            value={formatMemberSince(user.createdAt)}
           />
 
           <InfoItem
             icon={<KeyRound className="size-4" />}
             label="Access Level"
-            value="Full Platform Access"
+            value={
+              user.role === "admin"
+                ? "Full Platform Access"
+                : "Standard Access"
+            }
           />
         </div>
       </section>
@@ -394,7 +625,11 @@ export default function AdminProfilePage() {
           <PasswordField
             label="Current Password"
             value={currentPassword}
-            onChange={setCurrentPassword}
+            onChange={(value) => {
+              setCurrentPassword(value);
+              setPasswordError("");
+              setPasswordMessage("");
+            }}
             showPassword={showCurrentPassword}
             onToggle={() =>
               setShowCurrentPassword((previous) => !previous)
@@ -404,7 +639,11 @@ export default function AdminProfilePage() {
           <PasswordField
             label="New Password"
             value={newPassword}
-            onChange={setNewPassword}
+            onChange={(value) => {
+              setNewPassword(value);
+              setPasswordError("");
+              setPasswordMessage("");
+            }}
             showPassword={showNewPassword}
             onToggle={() =>
               setShowNewPassword((previous) => !previous)
@@ -414,7 +653,11 @@ export default function AdminProfilePage() {
           <PasswordField
             label="Confirm New Password"
             value={confirmPassword}
-            onChange={setConfirmPassword}
+            onChange={(value) => {
+              setConfirmPassword(value);
+              setPasswordError("");
+              setPasswordMessage("");
+            }}
             showPassword={showConfirmPassword}
             onToggle={() =>
               setShowConfirmPassword((previous) => !previous)
@@ -426,23 +669,19 @@ export default function AdminProfilePage() {
           </p>
 
           {passwordError && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              <AlertCircle className="mt-0.5 size-4 shrink-0" />
-              {passwordError}
-            </div>
+            <MessageBox type="error" message={passwordError} />
           )}
 
           {passwordMessage && (
-            <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-              {passwordMessage}
-            </div>
+            <MessageBox type="success" message={passwordMessage} />
           )}
 
           <div className="border-t border-border pt-5">
-            <Button type="submit">
+            <Button type="submit" disabled={isChangingPassword}>
               <LockKeyhole className="size-4" />
-              Update Password
+              {isChangingPassword
+                ? "Updating..."
+                : "Update Password"}
             </Button>
           </div>
         </form>
@@ -458,6 +697,7 @@ function FormField({
   onChange,
   icon,
   type = "text",
+  disabled = false,
 }: {
   label: string;
   value: string;
@@ -465,6 +705,7 @@ function FormField({
   onChange: (value: string) => void;
   icon: React.ReactNode;
   type?: string;
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -480,8 +721,9 @@ function FormField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-muted-foreground"
-          required
+          disabled={disabled}
+          className="h-full min-w-0 flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-70"
+          required={!disabled}
         />
       </div>
     </div>
@@ -558,6 +800,33 @@ function InfoItem({
           {value}
         </p>
       </div>
+    </div>
+  );
+}
+
+function MessageBox({
+  type,
+  message,
+}: {
+  type: "success" | "error";
+  message: string;
+}) {
+  const isSuccess = type === "success";
+
+  return (
+    <div
+      className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${isSuccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+          : "border-red-200 bg-red-50 text-red-700"
+        }`}
+    >
+      {isSuccess ? (
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+      ) : (
+        <AlertCircle className="mt-0.5 size-4 shrink-0" />
+      )}
+
+      {message}
     </div>
   );
 }
