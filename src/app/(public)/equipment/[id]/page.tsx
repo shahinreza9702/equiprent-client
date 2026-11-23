@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { FavoriteButton } from "@/components/equipment/favorite-button";
 import {
   ArrowLeft,
   ArrowRight,
@@ -324,9 +325,16 @@ function EquipmentDetailsContent() {
                 </span>
               </div>
 
-              <h1 className="mt-5 text-3xl font-bold tracking-tight text-primary sm:text-4xl">
-                {equipment.name}
-              </h1>
+              <div className="mt-5 flex items-start justify-between gap-4">
+                <h1 className="text-3xl font-bold tracking-tight text-primary sm:text-4xl">
+                  {equipment.name}
+                </h1>
+
+                <FavoriteButton
+                  equipmentId={equipment._id}
+                  enabled={user.role === "customer"}
+                />
+              </div>
 
               <p className="mt-5 leading-8 text-muted-foreground">
                 {equipment.description}
@@ -475,7 +483,7 @@ function EquipmentDetailsContent() {
                   </span>
                   <span className="font-semibold capitalize text-primary">
                     {equipment.status === "available" &&
-                    equipment.availableQuantity > 0
+                      equipment.availableQuantity > 0
                       ? "Available"
                       : "Unavailable"}
                   </span>
