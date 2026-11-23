@@ -160,42 +160,12 @@ export default function OwnerEquipmentPage() {
     }
   }, []);
 
+
+  // Initial API request
   // Initial API request
   useEffect(() => {
-    let isMounted = true;
-
-    const loadEquipments = async () => {
-      try {
-        const response =
-          await apiRequest<EquipmentApiResponse>(
-            "/equipments/owner/my-equipment",
-          );
-
-        if (isMounted) {
-          const equipments = response.data?.equipments ?? [];
-          setEquipmentData(equipments.map(mapEquipment));
-        }
-      } catch (error) {
-        if (isMounted) {
-          setErrorMessage(
-            error instanceof Error
-              ? error.message
-              : "Failed to load your equipment.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadEquipments();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    void Promise.resolve().then(() => fetchEquipments());
+  }, [fetchEquipments]);
 
   // Dynamic categories
   const categories = useMemo(
