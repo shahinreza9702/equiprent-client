@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   CalendarDays,
@@ -19,8 +20,39 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/api";
 
-type EquipmentStatus = "Approved" | "Pending" | "Rejected";
+type ApprovalStatus = "approved" | "pending" | "rejected";
+type RentalType = "daily" | "weekly" | "monthly";
+type AvailabilityStatus = "available" | "unavailable";
+
+interface EquipmentApiItem {
+  _id: string;
+  name: string;
+  category: string;
+  location: string;
+  rentalPrice: number;
+  rentalType: RentalType;
+  availableQuantity: number;
+  condition: string;
+  brand: string;
+  model: string;
+  image: string;
+  rentalTerms: string;
+  status: AvailabilityStatus;
+  approvalStatus: ApprovalStatus;
+  createdAt?: string;
+}
+
+interface EquipmentApiResponse {
+  equipments: EquipmentApiItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
 
 interface OwnerEquipment {
   id: string;
@@ -28,103 +60,161 @@ interface OwnerEquipment {
   category: string;
   location: string;
   price: number;
-  status: EquipmentStatus;
-  bookings: number;
+  rentalType: RentalType;
+  approvalStatus: ApprovalStatus;
+  availabilityStatus: AvailabilityStatus;
+  availableQuantity: number;
+  condition: string;
+  brand: string;
+  model: string;
+  rentalTerms: string;
   addedDate: string;
   image: string;
 }
 
-const equipmentData: OwnerEquipment[] = [
-  {
-    id: "EQ-001",
-    name: "Professional Excavator",
-    category: "Construction",
-    location: "Dhaka, Bangladesh",
-    price: 4500,
-    status: "Approved",
-    bookings: 12,
-    addedDate: "Oct 12, 2026",
-    image: "/images/equipment/excavator.jpg",
-  },
-  {
-    id: "EQ-002",
-    name: "Canon EOS R5 Camera",
-    category: "Photography",
-    location: "Chattogram, Bangladesh",
-    price: 2500,
-    status: "Approved",
-    bookings: 8,
-    addedDate: "Oct 15, 2026",
-    image: "/images/equipment/camera.jpg",
-  },
-  {
-    id: "EQ-003",
-    name: "Toyota Hiace",
-    category: "Vehicles",
-    location: "Dhaka, Bangladesh",
-    price: 6000,
-    status: "Pending",
-    bookings: 0,
-    addedDate: "Oct 18, 2026",
-    image: "/images/equipment/hiace.jpg",
-  },
-  {
-    id: "EQ-004",
-    name: "Heavy Duty Generator",
-    category: "Electronics",
-    location: "Sylhet, Bangladesh",
-    price: 1800,
-    status: "Approved",
-    bookings: 15,
-    addedDate: "Oct 20, 2026",
-    image: "/images/equipment/generator.jpg",
-  },
-  {
-    id: "EQ-005",
-    name: "Professional Drone",
-    category: "Photography",
-    location: "Chattogram, Bangladesh",
-    price: 1500,
-    status: "Rejected",
-    bookings: 0,
-    addedDate: "Oct 22, 2026",
-    image: "/images/equipment/drone.jpg",
-  },
-  {
-    id: "EQ-006",
-    name: "Event Sound System",
-    category: "Event Equipment",
-    location: "Dhaka, Bangladesh",
-    price: 1200,
-    status: "Pending",
-    bookings: 0,
-    addedDate: "Oct 25, 2026",
-    image: "/images/equipment/sound-system.jpg",
-  },
-];
-
-const statusStyles: Record<EquipmentStatus, string> = {
-  Approved: "bg-green-50 text-green-700 ring-green-600/20",
-  Pending: "bg-amber-50 text-amber-700 ring-amber-600/20",
-  Rejected: "bg-red-50 text-red-700 ring-red-600/20",
+const statusLabels: Record<ApprovalStatus, string> = {
+  approved: "Approved",
+  pending: "Pending",
+  rejected: "Rejected",
 };
 
+const statusStyles: Record<ApprovalStatus, string> = {
+  approved: "bg-green-50 text-green-700 ring-green-600/20",
+  pending: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  rejected: "bg-red-50 text-red-700 ring-red-600/20",
+};
+
+const rentalLabels: Record<RentalType, string> = {
+  daily: "per day",
+  weekly: "per week",
+  monthly: "per month",
+};
+
+const formatDate = (date?: string) => {
+  if (!date) return "Not available";
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Not available";
+  }
+
+  return parsedDate.toLocaleDateString("en-BD", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const mapEquipment = (item: EquipmentApiItem): OwnerEquipment => ({
+  id: item._id,
+  name: item.name,
+  category: item.category,
+  location: item.location,
+  price: item.rentalPrice,
+  rentalType: item.rentalType,
+  approvalStatus: item.approvalStatus,
+  availabilityStatus: item.status,
+  availableQuantity: item.availableQuantity,
+  condition: item.condition,
+  brand: item.brand,
+  model: item.model,
+  rentalTerms: item.rentalTerms,
+  addedDate: formatDate(item.createdAt),
+  image: item.image,
+});
+
 export default function OwnerEquipmentPage() {
+  const [equipmentData, setEquipmentData] = useState<OwnerEquipment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("All");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedEquipment, setSelectedEquipment] =
     useState<OwnerEquipment | null>(null);
 
+  // Fetch owner equipment
+  const fetchEquipments = useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const response =
+        await apiRequest<EquipmentApiResponse>(
+          "/equipments/owner/my-equipment",
+        );
+
+      const equipments = response.data?.equipments ?? [];
+
+      setEquipmentData(equipments.map(mapEquipment));
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to load your equipment.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Initial API request
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadEquipments = async () => {
+      try {
+        const response =
+          await apiRequest<EquipmentApiResponse>(
+            "/equipments/owner/my-equipment",
+          );
+
+        if (isMounted) {
+          const equipments = response.data?.equipments ?? [];
+          setEquipmentData(equipments.map(mapEquipment));
+        }
+      } catch (error) {
+        if (isMounted) {
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Failed to load your equipment.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadEquipments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Dynamic categories
+  const categories = useMemo(
+    () => [...new Set(equipmentData.map((item) => item.category))].sort(),
+    [equipmentData],
+  );
+
+  // Search and filters
   const filteredEquipment = useMemo(() => {
     return equipmentData.filter((equipment) => {
+      const query = searchQuery.trim().toLowerCase();
+
       const matchesSearch =
-        equipment.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        equipment.id.toLowerCase().includes(searchQuery.toLowerCase());
+        equipment.name.toLowerCase().includes(query) ||
+        equipment.id.toLowerCase().includes(query);
 
       const matchesStatus =
         selectedStatus === "All" ||
-        equipment.status === selectedStatus;
+        equipment.approvalStatus === selectedStatus;
 
       const matchesCategory =
         selectedCategory === "All" ||
@@ -132,8 +222,9 @@ export default function OwnerEquipmentPage() {
 
       return matchesSearch && matchesStatus && matchesCategory;
     });
-  }, [searchQuery, selectedStatus, selectedCategory]);
+  }, [equipmentData, searchQuery, selectedStatus, selectedCategory]);
 
+  // Dashboard statistics
   const stats = [
     {
       label: "Total Equipment",
@@ -143,19 +234,25 @@ export default function OwnerEquipmentPage() {
     },
     {
       label: "Approved",
-      value: equipmentData.filter((item) => item.status === "Approved").length,
+      value: equipmentData.filter(
+        (item) => item.approvalStatus === "approved",
+      ).length,
       icon: CheckCircle2,
       color: "bg-green-50 text-green-600",
     },
     {
       label: "Pending Review",
-      value: equipmentData.filter((item) => item.status === "Pending").length,
+      value: equipmentData.filter(
+        (item) => item.approvalStatus === "pending",
+      ).length,
       icon: Clock3,
       color: "bg-amber-50 text-amber-600",
     },
     {
       label: "Rejected",
-      value: equipmentData.filter((item) => item.status === "Rejected").length,
+      value: equipmentData.filter(
+        (item) => item.approvalStatus === "rejected",
+      ).length,
       icon: XCircle,
       color: "bg-red-50 text-red-600",
     },
@@ -195,13 +292,6 @@ export default function OwnerEquipmentPage() {
         </Button>
       </div>
 
-      {/* Demo Notice */}
-      <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        <strong>Demo Preview:</strong> The equipment information shown here is
-        sample data. Real equipment management will be connected to the backend
-        later.
-      </div>
-
       {/* Statistics */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => {
@@ -238,8 +328,11 @@ export default function OwnerEquipmentPage() {
               <h3 className="text-lg font-bold text-primary">
                 All Equipment
               </h3>
+
               <p className="mt-1 text-sm text-muted-foreground">
-                {filteredEquipment.length} equipment found
+                {isLoading
+                  ? "Loading equipment..."
+                  : `${filteredEquipment.length} equipment found`}
               </p>
             </div>
 
@@ -265,40 +358,97 @@ export default function OwnerEquipmentPage() {
                 aria-label="Filter by category"
               >
                 <option value="All">All Categories</option>
-                <option value="Construction">Construction</option>
-                <option value="Photography">Photography</option>
-                <option value="Vehicles">Vehicles</option>
-                <option value="Electronics">Electronics</option>
-                <option value="Event Equipment">Event Equipment</option>
+
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
               </select>
 
-              {/* Status Filter */}
+              {/* Approval Status Filter */}
               <select
                 value={selectedStatus}
                 onChange={(event) => setSelectedStatus(event.target.value)}
                 className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-                aria-label="Filter by status"
+                aria-label="Filter by approval status"
               >
                 <option value="All">All Status</option>
-                <option value="Approved">Approved</option>
-                <option value="Pending">Pending</option>
-                <option value="Rejected">Rejected</option>
+                <option value="approved">Approved</option>
+                <option value="pending">Pending</option>
+                <option value="rejected">Rejected</option>
               </select>
             </div>
           </div>
         </div>
 
-        {/* Table */}
-        {filteredEquipment.length > 0 ? (
+        {/* Loading State */}
+        {isLoading ? (
+          <div className="flex flex-col items-center px-6 py-16 text-center">
+            <Package className="mb-4 size-9 animate-pulse text-muted-foreground" />
+
+            <h4 className="font-semibold text-primary">
+              Loading your equipment
+            </h4>
+
+            <p className="mt-2 text-sm text-muted-foreground">
+              Please wait while we retrieve your equipment listings.
+            </p>
+          </div>
+        ) : errorMessage ? (
+          /* Error State */
+          <div className="flex flex-col items-center px-6 py-16 text-center">
+            <XCircle className="mb-4 size-10 text-red-500" />
+
+            <h4 className="text-lg font-bold text-primary">
+              Unable to load equipment
+            </h4>
+
+            <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+              {errorMessage}
+            </p>
+
+            <Button
+              className="mt-5"
+              onClick={() => void fetchEquipments()}
+            >
+              Try Again
+            </Button>
+          </div>
+        ) : equipmentData.length === 0 ? (
+          /* No Equipment State */
+          <div className="flex flex-col items-center px-6 py-16 text-center">
+            <Package className="mb-4 size-10 text-muted-foreground" />
+
+            <h4 className="text-lg font-bold text-primary">
+              No equipment yet
+            </h4>
+
+            <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+              You haven&apos;t added any equipment. Start by creating your
+              first equipment listing.
+            </p>
+
+            <Button
+              className="mt-5 gap-2"
+              render={<Link href="/owner-dashboard/add-equipment" />}
+              nativeButton={false}
+            >
+              <Plus className="size-4" />
+              Add Equipment
+            </Button>
+          </div>
+        ) : filteredEquipment.length > 0 ? (
+          /* Equipment Table */
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-left">
               <thead className="bg-muted/40">
                 <tr className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   <th className="px-6 py-4">Equipment</th>
                   <th className="px-6 py-4">Category</th>
-                  <th className="px-6 py-4">Daily Price</th>
-                  <th className="px-6 py-4">Bookings</th>
-                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Rental Price</th>
+                  <th className="px-6 py-4">Quantity</th>
+                  <th className="px-6 py-4">Approval Status</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -311,14 +461,26 @@ export default function OwnerEquipmentPage() {
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                          <Package className="size-5" />
+                        <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-muted-foreground">
+                          {equipment.image ? (
+                            <Image
+                              src={equipment.image}
+                              alt={equipment.name}
+                              width={48}
+                              height={48}
+                              unoptimized
+                              className="size-full object-cover"
+                            />
+                          ) : (
+                            <Package className="size-5" />
+                          )}
                         </div>
 
                         <div>
                           <p className="font-semibold text-primary">
                             {equipment.name}
                           </p>
+
                           <p className="mt-1 text-xs text-muted-foreground">
                             {equipment.id}
                           </p>
@@ -334,18 +496,21 @@ export default function OwnerEquipmentPage() {
                       <p className="font-semibold text-primary">
                         ৳{equipment.price.toLocaleString("en-BD")}
                       </p>
-                      <p className="text-xs text-muted-foreground">per day</p>
+
+                      <p className="text-xs text-muted-foreground">
+                        {rentalLabels[equipment.rentalType]}
+                      </p>
                     </td>
 
                     <td className="px-6 py-4 text-sm text-muted-foreground">
-                      {equipment.bookings}
+                      {equipment.availableQuantity}
                     </td>
 
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[equipment.status]}`}
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[equipment.approvalStatus]}`}
                       >
-                        {equipment.status}
+                        {statusLabels[equipment.approvalStatus]}
                       </span>
                     </td>
 
@@ -365,7 +530,7 @@ export default function OwnerEquipmentPage() {
                           type="button"
                           disabled
                           aria-label={`Edit ${equipment.name}`}
-                          title="Editing will be available after backend integration"
+                          title="Editing is not available yet"
                           className="cursor-not-allowed rounded-lg p-2 text-muted-foreground/40"
                         >
                           <Pencil className="size-4" />
@@ -375,7 +540,7 @@ export default function OwnerEquipmentPage() {
                           type="button"
                           disabled
                           aria-label={`Delete ${equipment.name}`}
-                          title="Deletion will be available after backend integration"
+                          title="Deletion is not available yet"
                           className="cursor-not-allowed rounded-lg p-2 text-muted-foreground/40"
                         >
                           <Trash2 className="size-4" />
@@ -388,10 +553,9 @@ export default function OwnerEquipmentPage() {
             </table>
           </div>
         ) : (
+          /* Filter Empty State */
           <div className="flex flex-col items-center px-6 py-16 text-center">
-            <div className="mb-4 flex size-16 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-              <SlidersHorizontal className="size-7" />
-            </div>
+            <SlidersHorizontal className="mb-4 size-9 text-muted-foreground" />
 
             <h4 className="text-lg font-bold text-primary">
               No equipment found
@@ -421,6 +585,7 @@ export default function OwnerEquipmentPage() {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Equipment Details
               </p>
+
               <h3 className="mt-2 text-xl font-bold text-primary">
                 {selectedEquipment.name}
               </h3>
@@ -438,7 +603,7 @@ export default function OwnerEquipmentPage() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <p className="text-xs text-muted-foreground">Equipment ID</p>
-              <p className="mt-1 font-semibold text-primary">
+              <p className="mt-1 break-all font-semibold text-primary">
                 {selectedEquipment.id}
               </p>
             </div>
@@ -446,7 +611,7 @@ export default function OwnerEquipmentPage() {
             <div>
               <p className="text-xs text-muted-foreground">Location</p>
               <p className="mt-1 flex items-center gap-1 font-semibold text-primary">
-                <MapPin className="size-4" />
+                <MapPin className="size-4 shrink-0" />
                 {selectedEquipment.location}
               </p>
             </div>
@@ -462,11 +627,63 @@ export default function OwnerEquipmentPage() {
             <div>
               <p className="text-xs text-muted-foreground">Approval Status</p>
               <span
-                className={`mt-1 inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[selectedEquipment.status]}`}
+                className={`mt-1 inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[selectedEquipment.approvalStatus]}`}
               >
-                {selectedEquipment.status}
+                {statusLabels[selectedEquipment.approvalStatus]}
               </span>
             </div>
+
+            <div>
+              <p className="text-xs text-muted-foreground">Rental Price</p>
+              <p className="mt-1 font-semibold text-primary">
+                ৳{selectedEquipment.price.toLocaleString("en-BD")}{" "}
+                {rentalLabels[selectedEquipment.rentalType]}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-muted-foreground">
+                Available Quantity
+              </p>
+              <p className="mt-1 font-semibold text-primary">
+                {selectedEquipment.availableQuantity}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-muted-foreground">Condition</p>
+              <p className="mt-1 font-semibold capitalize text-primary">
+                {selectedEquipment.condition}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-muted-foreground">Availability</p>
+              <p className="mt-1 font-semibold capitalize text-primary">
+                {selectedEquipment.availabilityStatus}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-muted-foreground">Brand</p>
+              <p className="mt-1 font-semibold text-primary">
+                {selectedEquipment.brand}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-muted-foreground">Model</p>
+              <p className="mt-1 font-semibold text-primary">
+                {selectedEquipment.model}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 border-t border-border pt-5">
+            <p className="text-xs text-muted-foreground">Rental Terms</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-primary">
+              {selectedEquipment.rentalTerms}
+            </p>
           </div>
         </section>
       )}
