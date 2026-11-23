@@ -9,6 +9,7 @@ import { LogOut } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 import {
   Bell,
+  BriefcaseBusiness,
   CalendarDays,
   Heart,
   LayoutDashboard,
@@ -33,6 +34,11 @@ const navigationLinks = [
     label: "My Favorites",
     href: "/dashboard/favorites",
     icon: Heart,
+  },
+  {
+    label: "Become an Owner",
+    href: "/dashboard/become-owner",
+    icon: BriefcaseBusiness,
   },
   {
     label: "Profile Settings",

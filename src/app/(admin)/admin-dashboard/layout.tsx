@@ -9,6 +9,7 @@ import {
   Users,
   Package,
   ClipboardList,
+  ClipboardCheck,
   Settings,
   Menu,
   X,
@@ -41,6 +42,11 @@ const navigationItems = [
     label: "Bookings",
     href: "/admin-dashboard/bookings",
     icon: ClipboardList,
+  },
+  {
+    label: "Owner Applications",
+    href: "/admin-dashboard/owner-applications",
+    icon: ClipboardCheck,
   },
   {
     label: "Profile Settings",
@@ -144,11 +150,10 @@ export default function AdminDashboardLayout({
                 key={item.href}
                 href={item.href}
                 onClick={closeMobileMenu}
-                className={`flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium transition-colors ${
-                  active
+                className={`flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium transition-colors ${active
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-3">
                   <Icon className="size-5" />
