@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import {
   Camera,
   LockKeyhole,
@@ -13,11 +13,53 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth, type AuthUser } from "@/providers/auth-provider";
 
 export default function ProfileSettingsPage() {
-  const [fullName, setFullName] = useState("John Doe");
-  const [email, setEmail] = useState("john.doe@example.com");
-  const [phone, setPhone] = useState("+880 1XXX-XXXXXX");
+  const { user, isLoading, refreshUser, updateUser } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-64 items-center justify-center">
+        <p className="text-sm text-muted-foreground">
+          Loading profile...
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ProfileSettingsForm
+      key={user?._id ?? "guest"}
+      user={user}
+      refreshUser={refreshUser}
+      updateUser={updateUser}
+    />
+  );
+}
+
+interface ProfileSettingsFormProps {
+  user: AuthUser | null;
+  refreshUser: () => Promise<AuthUser | null>;
+  updateUser: (updatedUser: AuthUser) => void;
+}
+
+function ProfileSettingsForm({
+  user,
+  refreshUser,
+  updateUser,
+}: ProfileSettingsFormProps) {
+  const isAuthenticated = Boolean(user);
+
+  const [fullName, setFullName] = useState(user?.name ?? "John Doe");
+  const [email, setEmail] = useState(
+    user?.email ?? "john.doe@example.com"
+  );
+  const [phone, setPhone] = useState(
+    user?.phone ?? "+880 1XXX-XXXXXX"
+  );
+
   const [location, setLocation] = useState("Dhaka, Bangladesh");
   const [bio, setBio] = useState(
     "Equipment rental enthusiast looking for reliable tools and equipment for my projects."
@@ -29,18 +71,80 @@ export default function ProfileSettingsPage() {
 
   const [passwordError, setPasswordError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSaveProfile = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveProfile = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
     event.preventDefault();
-    setSuccessMessage("Profile changes saved in this demo.");
+
+    setSuccessMessage("");
+    setProfileError("");
     setPasswordError("");
+
+    if (!fullName.trim()) {
+      setProfileError("Please enter your full name.");
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setSuccessMessage("Profile changes saved in this demo.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+
+      const response = await apiRequest<AuthUser>("/users/me", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: fullName.trim(),
+          phone: phone.trim(),
+        }),
+      });
+
+      if (!response.data) {
+        throw new Error("Updated profile was not returned.");
+      }
+
+      updateUser(response.data);
+
+      setFullName(response.data.name);
+      setEmail(response.data.email);
+      setPhone(response.data.phone ?? "");
+
+      setSuccessMessage("Your profile has been updated successfully.");
+    } catch (error) {
+      setProfileError(
+        error instanceof ApiError
+          ? error.message
+          : "Unable to update your profile. Please try again."
+      );
+
+      // Refresh the profile if the session has expired.
+      if (error instanceof ApiError && error.status === 401) {
+        await refreshUser();
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleChangePassword = (
-    event: React.FormEvent<HTMLFormElement>
+    event: FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault();
+
     setSuccessMessage("");
+    setPasswordError("");
+
+    if (isAuthenticated) {
+      setPasswordError(
+        "Password updates are not available yet. The backend endpoint needs to be implemented."
+      );
+      return;
+    }
 
     if (!currentPassword || !newPassword || !confirmPassword) {
       setPasswordError("Please complete all password fields.");
@@ -103,9 +207,11 @@ export default function ProfileSettingsPage() {
             <h3 className="text-xl font-bold text-primary">
               {fullName || "Your Name"}
             </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Customer Account
+
+            <p className="mt-1 text-sm capitalize text-muted-foreground">
+              {user?.role ?? "Customer"} Account
             </p>
+
             <p className="mt-2 text-xs text-muted-foreground">
               Profile photo upload will be available after backend integration.
             </p>
@@ -132,8 +238,12 @@ export default function ProfileSettingsPage() {
 
         <form onSubmit={handleSaveProfile} className="space-y-5">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {/* Full Name */}
             <div className="space-y-2">
-              <label htmlFor="fullName" className="text-sm font-medium text-primary">
+              <label
+                htmlFor="fullName"
+                className="text-sm font-medium text-primary"
+              >
                 Full Name
               </label>
 
@@ -143,12 +253,18 @@ export default function ProfileSettingsPage() {
                 value={fullName}
                 onChange={(event) => setFullName(event.target.value)}
                 required
+                minLength={2}
+                maxLength={100}
                 className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition focus:border-primary"
               />
             </div>
 
+            {/* Email */}
             <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium text-primary">
+              <label
+                htmlFor="email"
+                className="text-sm font-medium text-primary"
+              >
                 Email Address
               </label>
 
@@ -160,14 +276,25 @@ export default function ProfileSettingsPage() {
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
+                  readOnly={isAuthenticated}
                   required
-                  className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm outline-none transition focus:border-primary"
+                  className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm outline-none transition focus:border-primary read-only:cursor-not-allowed read-only:bg-muted"
                 />
               </div>
+
+              {isAuthenticated && (
+                <p className="text-xs text-muted-foreground">
+                  Email address cannot currently be changed.
+                </p>
+              )}
             </div>
 
+            {/* Phone */}
             <div className="space-y-2">
-              <label htmlFor="phone" className="text-sm font-medium text-primary">
+              <label
+                htmlFor="phone"
+                className="text-sm font-medium text-primary"
+              >
                 Phone Number
               </label>
 
@@ -184,8 +311,12 @@ export default function ProfileSettingsPage() {
               </div>
             </div>
 
+            {/* Location */}
             <div className="space-y-2">
-              <label htmlFor="location" className="text-sm font-medium text-primary">
+              <label
+                htmlFor="location"
+                className="text-sm font-medium text-primary"
+              >
                 Location
               </label>
 
@@ -195,40 +326,69 @@ export default function ProfileSettingsPage() {
                 <input
                   id="location"
                   type="text"
-                  value={location}
+                  value={isAuthenticated ? "" : location}
                   onChange={(event) => setLocation(event.target.value)}
-                  className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm outline-none transition focus:border-primary"
+                  disabled={isAuthenticated}
+                  placeholder={
+                    isAuthenticated
+                      ? "Location is not available yet"
+                      : ""
+                  }
+                  className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm outline-none transition focus:border-primary disabled:cursor-not-allowed disabled:bg-muted"
                 />
               </div>
             </div>
           </div>
 
+          {/* About Me */}
           <div className="space-y-2">
-            <label htmlFor="bio" className="text-sm font-medium text-primary">
+            <label
+              htmlFor="bio"
+              className="text-sm font-medium text-primary"
+            >
               About Me
             </label>
 
             <textarea
               id="bio"
-              value={bio}
+              value={isAuthenticated ? "" : bio}
               onChange={(event) => setBio(event.target.value)}
+              disabled={isAuthenticated}
               rows={4}
               maxLength={300}
-              className="w-full resize-none rounded-lg border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+              placeholder={
+                isAuthenticated
+                  ? "About Me is not available yet"
+                  : ""
+              }
+              className="w-full resize-none rounded-lg border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary disabled:cursor-not-allowed disabled:bg-muted"
             />
 
             <p className="text-right text-xs text-muted-foreground">
-              {bio.length}/300 characters
+              {isAuthenticated ? 0 : bio.length}/300 characters
             </p>
           </div>
+
+          {isAuthenticated && (
+            <p className="text-xs text-muted-foreground">
+              Location and About Me will become editable after backend support is added.
+            </p>
+          )}
+
+          {profileError && (
+            <p role="alert" className="text-sm font-medium text-red-600">
+              {profileError}
+            </p>
+          )}
 
           <div className="flex flex-col items-start gap-3 border-t border-border pt-5">
             <Button
               type="submit"
+              disabled={isSaving}
               className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Save className="size-4" />
-              Save Changes
+              {isSaving ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </form>
@@ -251,10 +411,19 @@ export default function ProfileSettingsPage() {
           </div>
         </div>
 
+        {isAuthenticated && (
+          <p className="mb-5 text-sm text-muted-foreground">
+            Password updates are not supported by the backend yet.
+          </p>
+        )}
+
         <form onSubmit={handleChangePassword} className="space-y-5">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              <label htmlFor="currentPassword" className="text-sm font-medium text-primary">
+              <label
+                htmlFor="currentPassword"
+                className="text-sm font-medium text-primary"
+              >
                 Current Password
               </label>
 
@@ -262,15 +431,21 @@ export default function ProfileSettingsPage() {
                 id="currentPassword"
                 type="password"
                 value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
+                onChange={(event) =>
+                  setCurrentPassword(event.target.value)
+                }
                 required
-                className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition focus:border-primary"
+                disabled={isAuthenticated}
+                className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition focus:border-primary disabled:cursor-not-allowed disabled:bg-muted"
                 placeholder="Enter current password"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="newPassword" className="text-sm font-medium text-primary">
+              <label
+                htmlFor="newPassword"
+                className="text-sm font-medium text-primary"
+              >
                 New Password
               </label>
 
@@ -281,13 +456,17 @@ export default function ProfileSettingsPage() {
                 onChange={(event) => setNewPassword(event.target.value)}
                 minLength={8}
                 required
-                className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition focus:border-primary"
+                disabled={isAuthenticated}
+                className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition focus:border-primary disabled:cursor-not-allowed disabled:bg-muted"
                 placeholder="At least 8 characters"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="text-sm font-medium text-primary">
+              <label
+                htmlFor="confirmPassword"
+                className="text-sm font-medium text-primary"
+              >
                 Confirm New Password
               </label>
 
@@ -295,10 +474,13 @@ export default function ProfileSettingsPage() {
                 id="confirmPassword"
                 type="password"
                 value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
+                onChange={(event) =>
+                  setConfirmPassword(event.target.value)
+                }
                 minLength={8}
                 required
-                className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition focus:border-primary"
+                disabled={isAuthenticated}
+                className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition focus:border-primary disabled:cursor-not-allowed disabled:bg-muted"
                 placeholder="Confirm new password"
               />
             </div>
@@ -313,6 +495,7 @@ export default function ProfileSettingsPage() {
           <Button
             type="submit"
             variant="outline"
+            disabled={isAuthenticated}
             className="gap-2"
           >
             <LockKeyhole className="size-4" />
@@ -321,7 +504,7 @@ export default function ProfileSettingsPage() {
         </form>
       </section>
 
-      {/* Demo Notice */}
+      {/* Success Message */}
       {successMessage && (
         <p
           role="status"
@@ -331,9 +514,12 @@ export default function ProfileSettingsPage() {
         </p>
       )}
 
-      <p className="text-center text-xs text-muted-foreground">
-        Demo profile settings. Changes are not saved to a server yet.
-      </p>
+      {/* Demo Notice */}
+      {!isAuthenticated && (
+        <p className="text-center text-xs text-muted-foreground">
+          Demo profile settings. Changes are not saved to a server yet.
+        </p>
+      )}
     </div>
   );
 }

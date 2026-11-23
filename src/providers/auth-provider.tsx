@@ -29,6 +29,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
   refreshUser: () => Promise<AuthUser | null>;
+  updateUser: (updatedUser: AuthUser) => void;
   logout: () => Promise<void>;
 }
 
@@ -91,6 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const updateUser = useCallback((updatedUser: AuthUser) => {
+    setUser(updatedUser);
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -124,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading,
     refreshUser,
     logout,
+    updateUser,
   };
 
   return (
