@@ -97,7 +97,7 @@ export function EquipmentListing({
 
       try {
         const response = await apiRequest<EquipmentListResponse>(
-          `/equipment?${query.toString()}`,
+          `/equipments?${query.toString()}`
         );
 
         if (!response.data) {
