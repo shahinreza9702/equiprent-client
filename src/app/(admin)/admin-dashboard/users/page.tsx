@@ -1,7 +1,6 @@
+﻿"use client";
 
-"use client";
-
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Users,
   UserRound,
@@ -10,18 +9,24 @@ import {
   Search,
   Eye,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   X,
   Mail,
   Phone,
   CalendarDays,
   MapPin,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { apiRequest, ApiError } from "@/lib/api";
 
 type UserRole = "Customer" | "Owner" | "Admin";
 type UserStatus = "Active" | "Suspended";
+type RoleFilter = "All" | UserRole;
+type StatusFilter = "All" | UserStatus;
 
 interface PlatformUser {
   id: string;
@@ -34,167 +39,204 @@ interface PlatformUser {
   joinedDate: string;
 }
 
-const initialUsers: PlatformUser[] = [
-  {
-    id: "USR-1001",
-    name: "Rahim Ahmed",
-    email: "rahim@example.com",
-    phone: "+880 1712-345678",
-    role: "Customer",
-    status: "Active",
-    location: "Dhaka, Bangladesh",
-    joinedDate: "Nov 21, 2026",
-  },
-  {
-    id: "USR-1002",
-    name: "Nusrat Jahan",
-    email: "nusrat@example.com",
-    phone: "+880 1812-345678",
-    role: "Owner",
-    status: "Active",
-    location: "Chattogram, Bangladesh",
-    joinedDate: "Nov 20, 2026",
-  },
-  {
-    id: "USR-1003",
-    name: "Tanvir Hasan",
-    email: "tanvir@example.com",
-    phone: "+880 1912-345678",
-    role: "Customer",
-    status: "Active",
-    location: "Sylhet, Bangladesh",
-    joinedDate: "Nov 19, 2026",
-  },
-  {
-    id: "USR-1004",
-    name: "Sadia Islam",
-    email: "sadia@example.com",
-    phone: "+880 1612-345678",
-    role: "Owner",
-    status: "Suspended",
-    location: "Rajshahi, Bangladesh",
-    joinedDate: "Nov 18, 2026",
-  },
-  {
-    id: "USR-1005",
-    name: "Mahmudul Karim",
-    email: "mahmud@example.com",
-    phone: "+880 1512-345678",
-    role: "Customer",
-    status: "Active",
-    location: "Khulna, Bangladesh",
-    joinedDate: "Nov 17, 2026",
-  },
-  {
-    id: "USR-1006",
-    name: "Farhan Chowdhury",
-    email: "farhan@example.com",
-    phone: "+880 1312-345678",
-    role: "Owner",
-    status: "Active",
-    location: "Dhaka, Bangladesh",
-    joinedDate: "Nov 16, 2026",
-  },
-  {
-    id: "USR-1007",
-    name: "Admin User",
-    email: "admin@example.com",
-    phone: "+880 1412-345678",
-    role: "Admin",
-    status: "Active",
-    location: "Dhaka, Bangladesh",
-    joinedDate: "Nov 15, 2026",
-  },
-];
+interface AdminUserApi {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: "customer" | "owner" | "admin";
+  status: "active" | "blocked";
+  joinedDate: string;
+}
+
+interface AdminUsersResponse {
+  users: AdminUserApi[];
+  stats: {
+    totalUsers: number;
+    customers: number;
+    owners: number;
+    admins: number;
+    activeUsers: number;
+  };
+  pagination: {
+    page: number;
+    limit: number;
+    totalUsers: number;
+    totalPages: number;
+  };
+}
+
+const emptyStats = {
+  totalUsers: 0,
+  customers: 0,
+  owners: 0,
+  admins: 0,
+  activeUsers: 0,
+};
+
+const mapUser = (user: AdminUserApi): PlatformUser => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  phone: user.phone ?? "Not provided",
+  role:
+    user.role === "customer"
+      ? "Customer"
+      : user.role === "owner"
+        ? "Owner"
+        : "Admin",
+  status: user.status === "active" ? "Active" : "Suspended",
+  location: "Not provided",
+  joinedDate: new Date(user.joinedDate).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }),
+});
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState(initialUsers);
+  const [users, setUsers] = useState<PlatformUser[]>([]);
+  const [stats, setStats] = useState(emptyStats);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [selectedUser, setSelectedUser] =
-    useState<PlatformUser | null>(null);
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("All");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
+  const [selectedUser, setSelectedUser] = useState<PlatformUser | null>(null);
 
-  const query = searchQuery.trim().toLowerCase();
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalFilteredUsers, setTotalFilteredUsers] = useState(0);
 
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      !query ||
-      user.name.toLowerCase().includes(query) ||
-      user.email.toLowerCase().includes(query) ||
-      user.id.toLowerCase().includes(query);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
-    const matchesRole =
-      roleFilter === "All" || user.role === roleFilter;
+  const fetchUsers = useCallback(async () => {
+    setIsLoading(true);
+    setError("");
 
-    const matchesStatus =
-      statusFilter === "All" || user.status === statusFilter;
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: "10",
+      });
 
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+      if (searchQuery.trim()) {
+        params.set("search", searchQuery.trim());
+      }
 
-  const activeCount = users.filter(
-    (user) => user.status === "Active"
-  ).length;
+      if (roleFilter !== "All") {
+        params.set("role", roleFilter.toLowerCase());
+      }
 
-  const customerCount = users.filter(
-    (user) => user.role === "Customer"
-  ).length;
+      if (statusFilter !== "All") {
+        params.set(
+          "status",
+          statusFilter === "Active" ? "active" : "blocked",
+        );
+      }
 
-  const ownerCount = users.filter(
-    (user) => user.role === "Owner"
-  ).length;
+      const response = await apiRequest<AdminUsersResponse>(
+        `/admin/users?${params.toString()}`,
+      );
 
-  const adminCount = users.filter(
-    (user) => user.role === "Admin"
-  ).length;
+      if (!response.data) {
+        throw new Error("Invalid users response from server.");
+      }
 
-  const toggleUserStatus = (userId: string) => {
-    setUsers((previous) =>
-      previous.map((user) =>
-        user.id === userId
-          ? {
-              ...user,
-              status:
-                user.status === "Active" ? "Suspended" : "Active",
-            }
-          : user
-      )
-    );
+      const result = response.data;
 
-    setSelectedUser((previous) =>
-      previous?.id === userId
-        ? {
-            ...previous,
-            status:
-              previous.status === "Active" ? "Suspended" : "Active",
-          }
-        : previous
-    );
+      const mappedUsers = result.users.map(mapUser);
+
+      setUsers(mappedUsers);
+      setStats(result.stats);
+      setTotalPages(result.pagination.totalPages);
+      setTotalFilteredUsers(result.pagination.totalUsers);
+
+      setSelectedUser((previous) => {
+        if (!previous) return null;
+
+        return (
+          mappedUsers.find((user) => user.id === previous.id) ?? null
+        );
+      });
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Failed to load users. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [page, searchQuery, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void fetchUsers();
+    }, searchQuery.trim() ? 350 : 0);
+
+    return () => clearTimeout(timeout);
+  }, [fetchUsers, searchQuery]);
+
+  const handleRoleFilter = (value: RoleFilter) => {
+    setRoleFilter(value);
+    setPage(1);
+  };
+
+  const handleStatusFilter = (value: StatusFilter) => {
+    setStatusFilter(value);
+    setPage(1);
+  };
+
+  const toggleUserStatus = async (user: PlatformUser) => {
+    const nextStatus =
+      user.status === "Active" ? "blocked" : "active";
+
+    setUpdatingUserId(user.id);
+    setError("");
+
+    try {
+      await apiRequest(`/admin/users/${user.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      await fetchUsers();
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Failed to update account status.",
+      );
+    } finally {
+      setUpdatingUserId(null);
+    }
   };
 
   const statCards = [
     {
       title: "Total Users",
-      value: users.length,
+      value: stats.totalUsers,
       icon: Users,
       color: "bg-primary/10 text-primary",
     },
     {
       title: "Customers",
-      value: customerCount,
+      value: stats.customers,
       icon: UserRound,
       color: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
     },
     {
       title: "Equipment Owners",
-      value: ownerCount,
+      value: stats.owners,
       icon: BriefcaseBusiness,
       color: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
     },
     {
       title: "Administrators",
-      value: adminCount,
+      value: stats.admins,
       icon: ShieldCheck,
       color: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
     },
@@ -218,18 +260,19 @@ export default function AdminUsersPage() {
         </p>
       </section>
 
-      {/* Demo Notice */}
-      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-        <AlertCircle className="mt-0.5 size-5 shrink-0" />
-        <div>
-          <p className="text-sm font-semibold">Demo User Records</p>
-          <p className="mt-1 text-xs leading-5 opacity-80">
-            These are sample users. Status changes are temporary and
-            will reset when the page reloads. Real user management
-            requires backend integration.
-          </p>
+      {/* API Error */}
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+        >
+          <AlertCircle className="mt-0.5 size-5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">Something went wrong</p>
+            <p className="mt-1 text-xs leading-5">{error}</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Statistics */}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -254,7 +297,11 @@ export default function AdminUsersPage() {
               </div>
 
               <p className="mt-5 text-2xl font-bold text-foreground">
-                {stat.value}
+                {stats.totalUsers === 0 && isLoading ? (
+                  <span className="inline-block h-7 w-12 animate-pulse rounded bg-muted" />
+                ) : (
+                  stat.value.toLocaleString()
+                )}
               </p>
             </div>
           );
@@ -270,7 +317,7 @@ export default function AdminUsersPage() {
                 All Users
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                {filteredUsers.length} users found · {activeCount} active
+                {totalFilteredUsers} users found · {stats.activeUsers} active
                 accounts
               </p>
             </div>
@@ -284,7 +331,10 @@ export default function AdminUsersPage() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search name, email or ID..."
                 className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/10"
               />
@@ -293,7 +343,9 @@ export default function AdminUsersPage() {
             <div className="relative">
               <select
                 value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value)}
+                onChange={(event) =>
+                  handleRoleFilter(event.target.value as RoleFilter)
+                }
                 className="h-11 w-full appearance-none rounded-lg border border-border bg-background px-4 pr-10 text-sm outline-none focus:border-primary"
               >
                 <option value="All">All Roles</option>
@@ -308,7 +360,9 @@ export default function AdminUsersPage() {
             <div className="relative">
               <select
                 value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
+                onChange={(event) =>
+                  handleStatusFilter(event.target.value as StatusFilter)
+                }
                 className="h-11 w-full appearance-none rounded-lg border border-border bg-background px-4 pr-10 text-sm outline-none focus:border-primary"
               >
                 <option value="All">All Statuses</option>
@@ -336,72 +390,81 @@ export default function AdminUsersPage() {
             </thead>
 
             <tbody className="divide-y divide-border">
-              {filteredUsers.map((user) => (
-                <tr
-                  key={user.id}
-                  className="transition-colors hover:bg-muted/30"
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                        {user.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .slice(0, 2)
-                          .join("")}
-                      </div>
-
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {user.name}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {user.email}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                      {user.role}
-                    </span>
-                  </td>
-
-                  <td className="px-6 py-4 text-muted-foreground">
-                    {user.location}
-                  </td>
-
-                  <td className="px-6 py-4 text-muted-foreground">
-                    {user.joinedDate}
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${
-                        user.status === "Active"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
-                      }`}
-                    >
-                      {user.status}
-                    </span>
-                  </td>
-
-                  <td className="px-6 py-4 text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedUser(user)}
-                    >
-                      <Eye className="mr-1 size-4" />
-                      View
-                    </Button>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-16 text-center">
+                    <Loader2 className="mx-auto size-6 animate-spin text-primary" />
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Loading users...
+                    </p>
                   </td>
                 </tr>
-              ))}
+              ) : users.length > 0 ? (
+                users.map((user) => (
+                  <tr
+                    key={user.id}
+                    className="transition-colors hover:bg-muted/30"
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                          {user.name
+                            .split(" ")
+                            .map((part) => part[0])
+                            .slice(0, 2)
+                            .join("")}
+                        </div>
 
-              {filteredUsers.length === 0 && (
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {user.name}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {user.email}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                        {user.role}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 text-muted-foreground">
+                      {user.location}
+                    </td>
+
+                    <td className="px-6 py-4 text-muted-foreground">
+                      {user.joinedDate}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                          user.status === "Active"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                            : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+                        }`}
+                      >
+                        {user.status}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedUser(user)}
+                      >
+                        <Eye className="mr-1 size-4" />
+                        View
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
                 <tr>
                   <td
                     colSpan={6}
@@ -413,6 +476,37 @@ export default function AdminUsersPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination */}
+        <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isLoading || page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              <ChevronLeft className="mr-1 size-4" />
+              Previous
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isLoading || page >= totalPages}
+              onClick={() =>
+                setPage((current) => Math.min(totalPages, current + 1))
+              }
+            >
+              Next
+              <ChevronRight className="ml-1 size-4" />
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -500,11 +594,19 @@ export default function AdminUsersPage() {
               variant={
                 selectedUser.status === "Active" ? "destructive" : "default"
               }
-              onClick={() => toggleUserStatus(selectedUser.id)}
+              disabled={updatingUserId === selectedUser.id}
+              onClick={() => void toggleUserStatus(selectedUser)}
             >
-              {selectedUser.status === "Active"
-                ? "Suspend Account"
-                : "Activate Account"}
+              {updatingUserId === selectedUser.id ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Updating...
+                </>
+              ) : selectedUser.status === "Active" ? (
+                "Suspend Account"
+              ) : (
+                "Activate Account"
+              )}
             </Button>
           </div>
         </div>
