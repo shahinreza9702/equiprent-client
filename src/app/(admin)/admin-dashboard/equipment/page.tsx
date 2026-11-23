@@ -18,6 +18,8 @@ import {
   Ban,
   Loader2,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -103,8 +105,11 @@ const rentalTypeLabels: Record<AdminEquipment["rentalType"], string> = {
   monthly: "Month",
 };
 
+const PAGE_LIMIT = 10;
+
 export default function AdminEquipmentPage() {
   const [equipment, setEquipment] = useState<AdminEquipment[]>([]);
+
   const [stats, setStats] = useState<EquipmentListResponse["stats"]>({
     total: 0,
     pending: 0,
@@ -112,6 +117,15 @@ export default function AdminEquipmentPage() {
     rejected: 0,
     available: 0,
     unavailable: 0,
+  });
+
+  const [pagination, setPagination] = useState<
+    EquipmentListResponse["pagination"]
+  >({
+    page: 1,
+    limit: PAGE_LIMIT,
+    totalEquipments: 0,
+    totalPages: 0,
   });
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -126,61 +140,109 @@ export default function AdminEquipmentPage() {
   const [reviewError, setReviewError] = useState("");
   const [pageError, setPageError] = useState("");
 
-  // Fetch equipment from the backend
-  const fetchEquipments = useCallback(async () => {
-    try {
-      setPageError("");
+  // Fetch equipment using server-side filters and pagination.
+  const fetchEquipments = useCallback(
+    async (page: number = 1) => {
+      try {
+        setPageError("");
 
-      const response = await apiRequest<EquipmentListResponse>(
-        "/admin/equipments?limit=100",
-      );
+        const params = new URLSearchParams();
 
-      if (!response.data) {
-        throw new Error("Unable to retrieve equipment data.");
-      }
+        params.set("page", String(page));
+        params.set("limit", String(PAGE_LIMIT));
+        params.set("sort", "newest");
 
-      const result = response.data;
+        if (searchQuery.trim()) {
+          params.set("search", searchQuery.trim());
+        }
 
-      setEquipment(result.equipments);
-      setStats(result.stats);
+        if (categoryFilter !== "All Categories") {
+          params.set("category", categoryFilter);
+        }
 
-      setSelectedEquipment((previous) => {
-        if (!previous) return null;
+        const approvalStatus = statusMap[activeFilter];
 
-        return (
-          result.equipments.find((item) => item.id === previous.id) ?? null
+        if (approvalStatus) {
+          params.set("approvalStatus", approvalStatus);
+        }
+
+        const response = await apiRequest<EquipmentListResponse>(
+          `/admin/equipments?${params.toString()}`,
         );
-      });
-    } catch (error) {
-      setPageError(
-        error instanceof Error
-          ? error.message
-          : "Failed to load equipment.",
-      );
-    }
-  }, []);
 
+        if (!response.data) {
+          throw new Error("Unable to retrieve equipment data.");
+        }
+
+        const result = response.data;
+
+        setEquipment(result.equipments);
+        setStats(result.stats);
+        setPagination(result.pagination);
+
+        setSelectedEquipment((previous) => {
+          if (!previous) return null;
+
+          return (
+            result.equipments.find((item) => item.id === previous.id) ?? null
+          );
+        });
+      } catch (error) {
+        setPageError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load equipment.",
+        );
+      }
+    },
+    [searchQuery, categoryFilter, activeFilter],
+  );
+
+  // Fetch whenever filters change.
   useEffect(() => {
     let active = true;
 
-    const load = async () => {
-      setIsLoading(true);
+    const timeoutId = setTimeout(() => {
+      const load = async () => {
+        if (!active) return;
 
-      await fetchEquipments();
+        setIsLoading(true);
 
-      if (active) {
-        setIsLoading(false);
-      }
-    };
+        await fetchEquipments(1);
 
-    void load();
+        if (active) {
+          setIsLoading(false);
+        }
+      };
+
+      void load();
+    }, 350);
 
     return () => {
       active = false;
+      clearTimeout(timeoutId);
     };
   }, [fetchEquipments]);
 
-  // Approve or reject equipment through the backend
+  // Change page.
+  const handlePageChange = async (page: number) => {
+    if (
+      page < 1 ||
+      page > pagination.totalPages ||
+      page === pagination.page ||
+      isLoading
+    ) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    await fetchEquipments(page);
+
+    setIsLoading(false);
+  };
+
+  // Approve or reject equipment.
   const handleReview = async (
     id: string,
     status: Extract<EquipmentApprovalStatus, "approved" | "rejected">,
@@ -200,7 +262,9 @@ export default function AdminEquipmentPage() {
         body: JSON.stringify({ status }),
       });
 
-      await fetchEquipments();
+      setSelectedEquipment(null);
+
+      await fetchEquipments(pagination.page);
     } catch (error) {
       setReviewError(
         error instanceof Error
@@ -211,40 +275,6 @@ export default function AdminEquipmentPage() {
       setIsReviewing(false);
     }
   };
-
-  // Dynamic category options
-  const categories = [
-    "All Categories",
-    ...Array.from(
-      new Set(equipment.map((item) => item.category).filter(Boolean)),
-    ).sort((a, b) => a.localeCompare(b)),
-  ];
-
-  const query = searchQuery.trim().toLowerCase();
-
-  const filteredEquipment = equipment.filter((item) => {
-    const ownerName = item.owner?.name ?? "";
-    const ownerEmail = item.owner?.email ?? "";
-
-    const matchesSearch =
-      !query ||
-      item.name.toLowerCase().includes(query) ||
-      item.id.toLowerCase().includes(query) ||
-      ownerName.toLowerCase().includes(query) ||
-      ownerEmail.toLowerCase().includes(query);
-
-    const matchesCategory =
-      categoryFilter === "All Categories" ||
-      item.category === categoryFilter;
-
-    const selectedStatus = statusMap[activeFilter];
-
-    const matchesStatus =
-      selectedStatus === null ||
-      item.approvalStatus === selectedStatus;
-
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
 
   const formatDate = (date: string) => {
     const parsedDate = new Date(date);
@@ -262,6 +292,16 @@ export default function AdminEquipmentPage() {
 
   const formatPrice = (price: number) =>
     `৳${price.toLocaleString("en-US")}`;
+
+  const startRecord =
+    pagination.totalEquipments === 0
+      ? 0
+      : (pagination.page - 1) * pagination.limit + 1;
+
+  const endRecord = Math.min(
+    pagination.page * pagination.limit,
+    pagination.totalEquipments,
+  );
 
   return (
     <div className="space-y-8">
@@ -300,17 +340,18 @@ export default function AdminEquipmentPage() {
               Unable to load equipment
             </p>
 
-            <p className="mt-1 text-sm text-red-800">
-              {pageError}
-            </p>
+            <p className="mt-1 text-sm text-red-800">{pageError}</p>
           </div>
 
           <Button
             variant="outline"
             size="sm"
+            disabled={isLoading}
             onClick={() => {
               setIsLoading(true);
-              void fetchEquipments().finally(() => setIsLoading(false));
+              void fetchEquipments(pagination.page).finally(() =>
+                setIsLoading(false),
+              );
             }}
           >
             <RefreshCw className="size-3.5" />
@@ -329,9 +370,7 @@ export default function AdminEquipmentPage() {
               Review failed
             </p>
 
-            <p className="mt-1 text-sm text-red-800">
-              {reviewError}
-            </p>
+            <p className="mt-1 text-sm text-red-800">{reviewError}</p>
           </div>
 
           <Button
@@ -433,11 +472,13 @@ export default function AdminEquipmentPage() {
               onChange={(event) => setCategoryFilter(event.target.value)}
               className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-primary outline-none focus:border-primary"
             >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
+              <option value="All Categories">All Categories</option>
+              <option value="Construction">Construction</option>
+              <option value="Agriculture">Agriculture</option>
+              <option value="Transportation">Transportation</option>
+              <option value="Power Tools">Power Tools</option>
+              <option value="Industrial">Industrial</option>
+              <option value="Other">Other</option>
             </select>
           </div>
         </div>
@@ -472,7 +513,7 @@ export default function AdminEquipmentPage() {
                 </tr>
               ) : (
                 <>
-                  {filteredEquipment.map((item) => (
+                  {equipment.map((item) => (
                     <tr
                       key={item.id}
                       className="transition-colors hover:bg-muted/30"
@@ -550,7 +591,7 @@ export default function AdminEquipmentPage() {
                     </tr>
                   ))}
 
-                  {filteredEquipment.length === 0 && (
+                  {equipment.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-5 py-12 text-center">
                         <Package className="mx-auto size-8 text-muted-foreground/50" />
@@ -571,13 +612,45 @@ export default function AdminEquipmentPage() {
           </table>
         </div>
 
-        <div className="border-t border-border px-5 py-4">
+        {/* Pagination */}
+        <div className="flex flex-col gap-4 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            Showing {isLoading ? 0 : filteredEquipment.length} of{" "}
-            {stats.total} equipment records
-            {stats.total > equipment.length &&
-              " (first 100 records loaded)"}
+            Showing {startRecord}–{endRecord} of{" "}
+            {pagination.totalEquipments} equipment records
           </p>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                isLoading ||
+                pagination.page <= 1 ||
+                pagination.totalPages === 0
+              }
+              onClick={() => void handlePageChange(pagination.page - 1)}
+            >
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+
+            <span className="min-w-24 text-center text-sm font-medium text-primary">
+              Page {pagination.page} of {pagination.totalPages || 1}
+            </span>
+
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                isLoading ||
+                pagination.page >= pagination.totalPages
+              }
+              onClick={() => void handlePageChange(pagination.page + 1)}
+            >
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </div>
       </section>
 
