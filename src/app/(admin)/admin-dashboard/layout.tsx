@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard,
@@ -15,9 +15,11 @@ import {
   ShieldCheck,
   ArrowLeft,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/providers/auth-provider";
 
 const navigationItems = [
   {
@@ -53,10 +55,36 @@ export default function AdminDashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
+  };
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    setLogoutError(null);
+
+    try {
+      await logout();
+      setIsMobileMenuOpen(false);
+
+      router.replace("/login");
+      router.refresh();
+    } catch (error) {
+      setLogoutError(
+        error instanceof Error
+          ? error.message
+          : "Unable to log out. Please try again.",
+      );
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const isActive = (href: string) => {
@@ -136,8 +164,9 @@ export default function AdminDashboardLayout({
         </nav>
       </div>
 
-      {/* Back to Website */}
+      {/* Sidebar Footer */}
       <div className="border-t border-border p-4">
+        {/* Back to Website */}
         <Link
           href="/"
           onClick={closeMobileMenu}
@@ -146,6 +175,27 @@ export default function AdminDashboardLayout({
           <ArrowLeft className="size-5" />
           Back to Website
         </Link>
+
+        {/* Logout Error */}
+        {logoutError && (
+          <p
+            className="mt-3 px-3 text-xs text-destructive"
+            role="alert"
+          >
+            {logoutError}
+          </p>
+        )}
+
+        {/* Logout */}
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+          className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <LogOut className="size-5" />
+          {isLoggingOut ? "Logging out..." : "Logout"}
+        </button>
       </div>
     </>
   );
@@ -215,6 +265,7 @@ export default function AdminDashboardLayout({
 
       {/* Main Content */}
       <div className="lg:pl-72">
+        {/* Desktop Header */}
         <header className="hidden h-20 items-center justify-between border-b border-border bg-background px-8 lg:flex">
           <div>
             <p className="text-sm text-muted-foreground">
