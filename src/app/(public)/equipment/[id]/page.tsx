@@ -2,6 +2,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -48,6 +49,10 @@ interface Equipment {
   updatedAt?: string;
 }
 
+interface BookingResponse {
+  bookingNumber: string;
+}
+
 function EquipmentDetailsContent() {
   const params = useParams<{ id: string }>();
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -55,6 +60,18 @@ function EquipmentDetailsContent() {
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Booking form states
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [customerNote, setCustomerNote] = useState("");
+
+  // Booking submission states
+  const [isBooking, setIsBooking] = useState(false);
+  const [bookingError, setBookingError] = useState("");
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingNumber, setBookingNumber] = useState("");
 
   useEffect(() => {
     if (isAuthLoading || !user) return;
@@ -64,7 +81,7 @@ function EquipmentDetailsContent() {
     const fetchEquipment = async () => {
       try {
         const response = await apiRequest<Equipment>(
-          `/equipment/${params.id}`,
+          `/equipments/${params.id}`,
         );
 
         if (isMounted) {
@@ -79,7 +96,9 @@ function EquipmentDetailsContent() {
           setError(
             err instanceof ApiError
               ? err.message
-              : "Unable to load equipment details.",
+              : err instanceof Error
+                ? err.message
+                : "Unable to load equipment details.",
           );
         }
       } finally {
@@ -95,6 +114,74 @@ function EquipmentDetailsContent() {
       isMounted = false;
     };
   }, [params.id, user, isAuthLoading]);
+
+  // Handle booking form submission
+  const handleBookingSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
+    setBookingError("");
+    setBookingSuccess(false);
+
+    if (!startDate || !endDate) {
+      setBookingError("Please select your rental dates.");
+      return;
+    }
+
+    if (new Date(endDate) <= new Date(startDate)) {
+      setBookingError("End date must be after start date.");
+      return;
+    }
+
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity > equipment!.availableQuantity
+    ) {
+      setBookingError("Please select a valid quantity.");
+      return;
+    }
+
+    try {
+      setIsBooking(true);
+
+      const response = await apiRequest<BookingResponse>(
+        "/bookings",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            equipment: equipment!._id,
+            startDate,
+            endDate,
+            quantity,
+            ...(customerNote.trim()
+              ? { customerNote: customerNote.trim() }
+              : {}),
+          }),
+        },
+      );
+
+      if (!response.data?.bookingNumber) {
+        throw new Error(
+          "Booking confirmation was not returned.",
+        );
+      }
+
+      setBookingNumber(response.data.bookingNumber);
+      setBookingSuccess(true);
+    } catch (err) {
+      setBookingError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Unable to create booking.",
+      );
+    } finally {
+      setIsBooking(false);
+    }
+  };
 
   if (isAuthLoading) {
     return (
@@ -247,14 +334,18 @@ function EquipmentDetailsContent() {
 
               <div className="mt-8 grid gap-4 rounded-2xl border border-border bg-card p-6 sm:grid-cols-2">
                 <div>
-                  <p className="text-sm text-muted-foreground">Brand</p>
+                  <p className="text-sm text-muted-foreground">
+                    Brand
+                  </p>
                   <p className="mt-1 font-semibold text-primary">
                     {equipment.brand}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-sm text-muted-foreground">Model</p>
+                  <p className="text-sm text-muted-foreground">
+                    Model
+                  </p>
                   <p className="mt-1 font-semibold text-primary">
                     {equipment.model}
                   </p>
@@ -361,21 +452,27 @@ function EquipmentDetailsContent() {
 
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between gap-3 text-sm">
-                  <span className="text-muted-foreground">Category</span>
+                  <span className="text-muted-foreground">
+                    Category
+                  </span>
                   <span className="font-medium text-primary">
                     {equipment.category}
                   </span>
                 </div>
 
                 <div className="flex justify-between gap-3 text-sm">
-                  <span className="text-muted-foreground">Location</span>
+                  <span className="text-muted-foreground">
+                    Location
+                  </span>
                   <span className="font-medium text-primary">
                     {equipment.location}
                   </span>
                 </div>
 
                 <div className="flex justify-between gap-3 text-sm">
-                  <span className="text-muted-foreground">Availability</span>
+                  <span className="text-muted-foreground">
+                    Availability
+                  </span>
                   <span className="font-semibold capitalize text-primary">
                     {equipment.status === "available" &&
                     equipment.availableQuantity > 0
@@ -397,13 +494,145 @@ function EquipmentDetailsContent() {
               </div>
 
               {canBook ? (
-                <Button
-                  className="mt-6 h-12 w-full"
-                  disabled
-                  title="Booking workflow is not connected yet"
+                <form
+                  onSubmit={handleBookingSubmit}
+                  className="mt-6 space-y-4"
                 >
-                  Booking Coming Soon
-                </Button>
+                  <div>
+                    <label
+                      htmlFor="startDate"
+                      className="mb-2 block text-sm font-medium text-primary"
+                    >
+                      Start Date
+                    </label>
+
+                    <input
+                      id="startDate"
+                      type="date"
+                      required
+                      value={startDate}
+                      onChange={(event) =>
+                        setStartDate(event.target.value)
+                      }
+                      className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="endDate"
+                      className="mb-2 block text-sm font-medium text-primary"
+                    >
+                      End Date
+                    </label>
+
+                    <input
+                      id="endDate"
+                      type="date"
+                      required
+                      min={startDate || undefined}
+                      value={endDate}
+                      onChange={(event) =>
+                        setEndDate(event.target.value)
+                      }
+                      className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="quantity"
+                      className="mb-2 block text-sm font-medium text-primary"
+                    >
+                      Quantity
+                    </label>
+
+                    <input
+                      id="quantity"
+                      type="number"
+                      required
+                      min={1}
+                      max={equipment.availableQuantity}
+                      value={quantity}
+                      onChange={(event) =>
+                        setQuantity(Number(event.target.value))
+                      }
+                      className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-primary"
+                    />
+
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Maximum available: {equipment.availableQuantity}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="customerNote"
+                      className="mb-2 block text-sm font-medium text-primary"
+                    >
+                      Note (Optional)
+                    </label>
+
+                    <textarea
+                      id="customerNote"
+                      value={customerNote}
+                      onChange={(event) =>
+                        setCustomerNote(event.target.value)
+                      }
+                      maxLength={500}
+                      rows={3}
+                      placeholder="Write any additional requirements..."
+                      className="w-full resize-y rounded-lg border border-border bg-background p-3 text-sm text-primary"
+                    />
+
+                    <p className="mt-1 text-right text-xs text-muted-foreground">
+                      {customerNote.length}/500
+                    </p>
+                  </div>
+
+                  {bookingError && (
+                    <p
+                      role="alert"
+                      className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
+                    >
+                      {bookingError}
+                    </p>
+                  )}
+
+                  {bookingSuccess && (
+                    <div
+                      role="status"
+                      className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800"
+                    >
+                      <p className="font-semibold">
+                        Booking request submitted successfully!
+                      </p>
+
+                      <p className="mt-1">
+                        Booking Number: {bookingNumber}
+                      </p>
+
+                      <Link
+                        href="/dashboard/bookings"
+                        className="mt-3 inline-block font-semibold underline"
+                      >
+                        View My Bookings
+                      </Link>
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    className="h-12 w-full"
+                    disabled={isBooking || bookingSuccess}
+                  >
+                    {isBooking
+                      ? "Submitting Request..."
+                      : bookingSuccess
+                        ? "Booking Submitted"
+                        : "Request Booking"}
+                  </Button>
+                </form>
               ) : user.role === "customer" ? (
                 <Button className="mt-6 h-12 w-full" disabled>
                   Currently Unavailable
