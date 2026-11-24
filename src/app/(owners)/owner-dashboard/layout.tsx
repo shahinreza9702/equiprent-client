@@ -2,13 +2,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   Bell,
   BriefcaseBusiness,
   CalendarDays,
   LayoutDashboard,
+  LogOut,
   Menu,
   Package,
   PlusCircle,
@@ -17,6 +18,8 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+
+import { useAuth } from "@/providers/auth-provider";
 
 const navigationLinks = [
   {
@@ -57,7 +60,38 @@ export default function OwnerDashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+
+  const closeSidebar = () => {
+    setIsSidebarOpen(false);
+  };
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    setLogoutError(null);
+
+    try {
+      await logout();
+
+      setIsSidebarOpen(false);
+
+      router.replace("/login");
+      router.refresh();
+    } catch (error) {
+      setLogoutError(
+        error instanceof Error
+          ? error.message
+          : "Unable to log out. Please try again.",
+      );
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -77,6 +111,7 @@ export default function OwnerDashboardLayout({
           type="button"
           onClick={() => setIsSidebarOpen((previous) => !previous)}
           aria-label={isSidebarOpen ? "Close menu" : "Open menu"}
+          aria-expanded={isSidebarOpen}
           className="rounded-lg p-2 text-primary hover:bg-muted"
         >
           {isSidebarOpen ? <X /> : <Menu />}
@@ -88,7 +123,7 @@ export default function OwnerDashboardLayout({
         <button
           type="button"
           aria-label="Close sidebar"
-          onClick={() => setIsSidebarOpen(false)}
+          onClick={closeSidebar}
           className="fixed inset-0 z-40 bg-black/40 lg:hidden"
         />
       )}
@@ -102,7 +137,11 @@ export default function OwnerDashboardLayout({
         >
           {/* Brand */}
           <div className="flex h-20 items-center border-b border-border px-7">
-            <Link href="/" className="flex items-center gap-3">
+            <Link
+              href="/"
+              onClick={closeSidebar}
+              className="flex items-center gap-3"
+            >
               <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-lg font-bold text-white">
                 E
               </span>
@@ -131,7 +170,7 @@ export default function OwnerDashboardLayout({
                   <Link
                     key={item.href}
                     href={item.href}
-                    onClick={() => setIsSidebarOpen(false)}
+                    onClick={closeSidebar}
                     aria-current={isActive ? "page" : undefined}
                     className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
                       isActive
@@ -149,13 +188,36 @@ export default function OwnerDashboardLayout({
 
           {/* Sidebar Footer */}
           <div className="border-t border-border p-5">
+            {/* Back to Website */}
             <Link
               href="/"
+              onClick={closeSidebar}
               className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
             >
               <BriefcaseBusiness className="size-5" />
               Back to Website
             </Link>
+
+            {/* Logout Error */}
+            {logoutError && (
+              <p
+                className="mt-3 px-3 text-xs text-destructive"
+                role="alert"
+              >
+                {logoutError}
+              </p>
+            )}
+
+            {/* Logout */}
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <LogOut className="size-5" />
+              {isLoggingOut ? "Logging out..." : "Logout"}
+            </button>
           </div>
         </aside>
 
