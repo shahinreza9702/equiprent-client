@@ -1,36 +1,188 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EquipRent Client
 
-## Getting Started
+The frontend application for **EquipRent**, an equipment rental platform where customers can discover and rent equipment, owners can manage their listings and bookings, and administrators can manage the platform.
 
-First, run the development server:
+## Live Demo
+
+**Live Application:** https://equiprent-client.vercel.app/
+
+**Backend API:** https://equiprent-server.vercel.app/api
+
+## Tech Stack
+
+- Next.js 16 (App Router)
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- shadcn/ui
+- Framer Motion
+- Lucide React
+- npm
+
+## Features
+
+- Responsive homepage and equipment discovery
+- Equipment search, filtering, and sorting
+- Equipment details and rental booking flow
+- User registration and login
+- Role-based dashboards
+- Customer dashboard and booking history
+- Favorites management
+- Owner dashboard and equipment management
+- Owner earnings and transaction history
+- Admin dashboard and platform management
+- Stripe Checkout payment flow
+- Payment success and cancellation pages
+- Responsive layouts and animated UI components
+
+## Project Structure
+
+```text
+equiprent-client/
+├── public/
+├── src/
+│   ├── app/
+│   │   ├── (admin)/
+│   │   ├── (auth)/
+│   │   ├── (owners)/
+│   │   ├── (public)/
+│   │   └── (users)/
+│   ├── components/
+│   ├── hooks/
+│   ├── lib/
+│   └── ...
+├── .env.local
+├── package.json
+└── tsconfig.json
+```
+
+## Prerequisites
+
+- Node.js
+- npm
+- EquipRent backend API running locally or deployed
+
+## Installation
+
+Clone the repository and navigate to the client directory:
+
+```bash
+cd equiprent-client
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create `.env.local` in the project root.
+
+## Environment Variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend API base URL | `http://localhost:5000/api` |
+
+Example for local development:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000/api
+```
+
+For production:
+
+```env
+NEXT_PUBLIC_API_URL=https://equiprent-server.vercel.app/api
+```
+
+**Important:** Variables prefixed with `NEXT_PUBLIC_` are exposed to the browser. Never put private API keys, database credentials, JWT secrets, or Stripe secret keys in client-side environment variables.
+
+## Running the Client
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Available Scripts
 
-## Learn More
+| Command | Description |
+|---|---|
+| `npm run dev` | Start the Next.js development server |
+| `npm run build` | Create a production build |
+| `npm run start` | Start the production server |
+| `npm run lint` | Run ESLint |
 
-To learn more about Next.js, take a look at the following resources:
+## Backend Connection
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The client communicates with the EquipRent backend API.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Local API:**
 
-## Deploy on Vercel
+```text
+http://localhost:5000/api
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Production API:**
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```text
+https://equiprent-server.vercel.app/api
+```
+
+Make sure the backend is running and its CORS configuration allows the frontend origin.
+
+## Payment Flow
+
+EquipRent integrates Stripe Checkout for payment processing.
+
+1. A customer selects equipment and submits a booking request.
+2. The frontend requests a Checkout Session from the backend.
+3. The customer is redirected to Stripe Checkout.
+4. Stripe processes the test payment.
+5. The backend verifies the payment through Stripe webhooks.
+6. The customer is redirected to the payment success or cancellation page.
+
+The backend is responsible for payment verification and booking creation. The frontend does not independently mark payments as successful.
+
+## Production Build
+
+Create a production build:
+
+```bash
+npm run build
+```
+
+Run the production server:
+
+```bash
+npm run start
+```
+
+Configure `NEXT_PUBLIC_API_URL` with the production backend URL before building the application.
+
+## Deployment
+
+The frontend is deployed on Vercel:
+
+- **Client:** https://equiprent-client.vercel.app/
+- **Server:** https://equiprent-server.vercel.app/
+
+Before deployment:
+
+- Configure the production API URL.
+- Ensure the backend is deployed and accessible.
+- Configure backend CORS for the frontend domain.
+- Verify authentication cookies work over HTTPS.
+- Configure Stripe production credentials and webhook endpoint on the backend when moving out of test mode.
+
+## License
+
+This project was developed as an equipment rental platform assignment.
