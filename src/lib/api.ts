@@ -31,9 +31,10 @@ export async function apiRequest<T = unknown>(
     `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`,
     {
       ...options,
+      cache: "no-store",
       headers,
       credentials: "include",
-    },
+    }
   );
 
   const result = (await response.json().catch(() => null)) as
