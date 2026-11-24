@@ -50,8 +50,9 @@ interface Equipment {
   updatedAt?: string;
 }
 
-interface BookingResponse {
-  bookingNumber: string;
+interface CheckoutSessionResponse {
+  checkoutUrl: string;
+  sessionId: string;
 }
 
 function EquipmentDetailsContent() {
@@ -68,11 +69,9 @@ function EquipmentDetailsContent() {
   const [quantity, setQuantity] = useState(1);
   const [customerNote, setCustomerNote] = useState("");
 
-  // Booking submission states
+  // Checkout submission states
   const [isBooking, setIsBooking] = useState(false);
   const [bookingError, setBookingError] = useState("");
-  const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [bookingNumber, setBookingNumber] = useState("");
 
   useEffect(() => {
     if (isAuthLoading || !user) return;
@@ -116,14 +115,18 @@ function EquipmentDetailsContent() {
     };
   }, [params.id, user, isAuthLoading]);
 
-  // Handle booking form submission
+  // Handle Stripe Checkout submission.
   const handleBookingSubmit = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
 
     setBookingError("");
-    setBookingSuccess(false);
+
+    if (!equipment) {
+      setBookingError("Equipment details are unavailable.");
+      return;
+    }
 
     if (!startDate || !endDate) {
       setBookingError("Please select your rental dates.");
@@ -138,7 +141,7 @@ function EquipmentDetailsContent() {
     if (
       !Number.isInteger(quantity) ||
       quantity < 1 ||
-      quantity > equipment!.availableQuantity
+      quantity > equipment.availableQuantity
     ) {
       setBookingError("Please select a valid quantity.");
       return;
@@ -147,12 +150,12 @@ function EquipmentDetailsContent() {
     try {
       setIsBooking(true);
 
-      const response = await apiRequest<BookingResponse>(
-        "/bookings",
+      const response = await apiRequest<CheckoutSessionResponse>(
+        "/payments/checkout-session",
         {
           method: "POST",
           body: JSON.stringify({
-            equipment: equipment!._id,
+            equipment: equipment._id,
             startDate,
             endDate,
             quantity,
@@ -163,23 +166,21 @@ function EquipmentDetailsContent() {
         },
       );
 
-      if (!response.data?.bookingNumber) {
-        throw new Error(
-          "Booking confirmation was not returned.",
-        );
+      if (!response.data?.checkoutUrl) {
+        throw new Error("Stripe Checkout URL was not returned.");
       }
 
-      setBookingNumber(response.data.bookingNumber);
-      setBookingSuccess(true);
+      // Redirect the customer to Stripe's hosted Checkout page.
+      window.location.assign(response.data.checkoutUrl);
     } catch (err) {
       setBookingError(
         err instanceof ApiError
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Unable to create booking.",
+            : "Unable to start the payment process.",
       );
-    } finally {
+
       setIsBooking(false);
     }
   };
@@ -607,38 +608,14 @@ function EquipmentDetailsContent() {
                     </p>
                   )}
 
-                  {bookingSuccess && (
-                    <div
-                      role="status"
-                      className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800"
-                    >
-                      <p className="font-semibold">
-                        Booking request submitted successfully!
-                      </p>
-
-                      <p className="mt-1">
-                        Booking Number: {bookingNumber}
-                      </p>
-
-                      <Link
-                        href="/dashboard/bookings"
-                        className="mt-3 inline-block font-semibold underline"
-                      >
-                        View My Bookings
-                      </Link>
-                    </div>
-                  )}
-
                   <Button
                     type="submit"
                     className="h-12 w-full"
-                    disabled={isBooking || bookingSuccess}
+                    disabled={isBooking}
                   >
                     {isBooking
-                      ? "Submitting Request..."
-                      : bookingSuccess
-                        ? "Booking Submitted"
-                        : "Request Booking"}
+                      ? "Redirecting to Checkout..."
+                      : "Proceed to Payment"}
                   </Button>
                 </form>
               ) : user.role === "customer" ? (
