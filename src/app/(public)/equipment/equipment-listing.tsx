@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MapPin, Search, SlidersHorizontal } from "lucide-react";
 
 import {
@@ -37,14 +38,41 @@ interface EquipmentListingProps {
   initialLocation?: string;
 }
 
-export function EquipmentListing({
+// Suspense boundary for useSearchParams
+export function EquipmentListing(props: EquipmentListingProps) {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-2xl border border-border px-6 py-16 text-center">
+          <p className="text-sm text-muted-foreground">
+            Loading equipment...
+          </p>
+        </div>
+      }
+    >
+      <EquipmentListingContent {...props} />
+    </Suspense>
+  );
+}
+
+function EquipmentListingContent({
   initialSearch = "",
   initialLocation = "",
 }: EquipmentListingProps) {
+  const searchParams = useSearchParams();
+
+  // Read category from URL without setting state inside an effect
+  const [category, setCategory] = useState(() => {
+    const requestedCategory = searchParams.get("category");
+
+    return requestedCategory && categories.includes(requestedCategory)
+      ? requestedCategory
+      : "All Categories";
+  });
+
   // Search and filter states
   const [search, setSearch] = useState(initialSearch);
   const [location, setLocation] = useState(initialLocation);
-  const [category, setCategory] = useState("All Categories");
   const [rentalType, setRentalType] = useState("all");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -61,6 +89,7 @@ export function EquipmentListing({
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
 
+  // Fetch equipment whenever filters or pagination change
   useEffect(() => {
     let isMounted = true;
 
@@ -119,7 +148,7 @@ export function EquipmentListing({
           setError(
             err instanceof Error
               ? err.message
-              : "Unable to load equipment. Please try again.",
+              : "Unable to load equipment. Please try again."
           );
         }
       } finally {
