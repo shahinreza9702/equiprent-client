@@ -2,26 +2,35 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { MapPin, Search, SlidersHorizontal } from "lucide-react";
 
 import {
   EquipmentCard,
   type EquipmentCardData,
 } from "@/components/home/featured-equipment/equipment-card";
+
+import { categoryData } from "@/components/home/categories/category-data";
 import { apiRequest } from "@/lib/api";
 
-const categories = [
-  "All Categories",
-  "Construction Equipment",
-  "Photography Equipment",
-  "Vehicles & Transportation",
-  "Agriculture Equipment",
-  "Electronics",
-  "Event Equipment",
-];
-
 const PAGE_LIMIT = 12;
+
+/**
+ * Category IDs from categoryData mapped to
+ * the exact category values stored in the backend.
+ */
+const categoryApiValues: Record<string, string> = {
+  construction: "Construction",
+  photography: "Photography",
+  vehicles: "Vehicles",
+  agriculture: "Agriculture",
+  electronics: "Electronics",
+  events: "Event Equipment",
+};
 
 interface EquipmentListResponse {
   equipments: EquipmentCardData[];
@@ -38,7 +47,20 @@ interface EquipmentListingProps {
   initialLocation?: string;
 }
 
-// Suspense boundary for useSearchParams
+interface EquipmentState {
+  equipments: EquipmentCardData[];
+  total: number;
+  totalPages: number;
+  error: string;
+}
+
+const initialEquipmentState: EquipmentState = {
+  equipments: [],
+  total: 0,
+  totalPages: 1,
+  error: "",
+};
+
 export function EquipmentListing(props: EquipmentListingProps) {
   return (
     <Suspense
@@ -59,39 +81,96 @@ function EquipmentListingContent({
   initialSearch = "",
   initialLocation = "",
 }: EquipmentListingProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Read category from URL without setting state inside an effect
-  const [category, setCategory] = useState(() => {
-    const requestedCategory = searchParams.get("category");
+  // Read category slug from URL
+  const requestedCategory = searchParams.get("category");
 
-    return requestedCategory && categories.includes(requestedCategory)
-      ? requestedCategory
-      : "All Categories";
-  });
+  // Validate category against shared categoryData
+  const selectedCategory = categoryData.find(
+    (item) => item.id === requestedCategory,
+  );
 
-  // Search and filter states
+  const categoryId = selectedCategory?.id ?? "all";
+
+  // Convert URL slug into backend category value
+  const categoryValue =
+    categoryId !== "all"
+      ? categoryApiValues[categoryId] ?? ""
+      : "";
+
+  // Filter states
   const [search, setSearch] = useState(initialSearch);
   const [location, setLocation] = useState(initialLocation);
   const [rentalType, setRentalType] = useState("all");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState("newest");
-
-  // Equipment and pagination states
-  const [equipments, setEquipments] = useState<EquipmentCardData[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
 
-  // Request states
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  // Retry counter
   const [retry, setRetry] = useState(0);
 
-  // Fetch equipment whenever filters or pagination change
+  // Equipment response
+  const [equipmentState, setEquipmentState] =
+    useState<EquipmentState>(initialEquipmentState);
+
+  // Track which request has completed
+  const [completedRequestKey, setCompletedRequestKey] = useState("");
+
+  const requestKey = JSON.stringify({
+    search,
+    location,
+    category: categoryValue,
+    rentalType,
+    minPrice,
+    maxPrice,
+    sort,
+    page,
+    retry,
+  });
+
+  // Loading is derived instead of being set synchronously in an effect
+  const isLoading = completedRequestKey !== requestKey;
+
+  const {
+    equipments,
+    total,
+    totalPages,
+    error,
+  } = equipmentState;
+
+  /**
+   * Update category in URL.
+   */
+  const handleCategoryChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (value === "all") {
+      params.delete("category");
+    } else {
+      params.set("category", value);
+    }
+
+    params.delete("page");
+
+    const queryString = params.toString();
+
+    setPage(1);
+
+    router.replace(
+      queryString ? `${pathname}?${queryString}` : pathname,
+      { scroll: false },
+    );
+  };
+
+  /**
+   * Fetch equipment whenever filters change.
+   */
   useEffect(() => {
-    let isMounted = true;
+    let isActive = true;
 
     const fetchEquipments = async () => {
       const query = new URLSearchParams({
@@ -108,8 +187,8 @@ function EquipmentListingContent({
         query.set("location", location.trim());
       }
 
-      if (category !== "All Categories") {
-        query.set("category", category);
+      if (categoryValue) {
+        query.set("category", categoryValue);
       }
 
       if (rentalType !== "all") {
@@ -126,34 +205,39 @@ function EquipmentListingContent({
 
       try {
         const response = await apiRequest<EquipmentListResponse>(
-          `/equipments?${query.toString()}`
+          `/equipments?${query.toString()}`,
         );
 
         if (!response.data) {
           throw new Error("Equipment data was not returned.");
         }
 
-        if (isMounted) {
-          setEquipments(response.data.equipments);
-          setTotal(response.data.pagination.total);
-          setTotalPages(response.data.pagination.totalPages);
-          setError("");
-        }
-      } catch (err) {
-        if (isMounted) {
-          setEquipments([]);
-          setTotal(0);
-          setTotalPages(1);
+        if (!isActive) return;
 
-          setError(
+        setEquipmentState({
+          equipments: response.data.equipments ?? [],
+          total: response.data.pagination.total ?? 0,
+          totalPages: Math.max(
+            response.data.pagination.totalPages ?? 1,
+            1,
+          ),
+          error: "",
+        });
+      } catch (err) {
+        if (!isActive) return;
+
+        setEquipmentState({
+          equipments: [],
+          total: 0,
+          totalPages: 1,
+          error:
             err instanceof Error
               ? err.message
-              : "Unable to load equipment. Please try again."
-          );
-        }
+              : "Unable to load equipment. Please try again.",
+        });
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
+        if (isActive) {
+          setCompletedRequestKey(requestKey);
         }
       }
     };
@@ -161,56 +245,61 @@ function EquipmentListingContent({
     void fetchEquipments();
 
     return () => {
-      isMounted = false;
+      isActive = false;
     };
-  }, [
-    search,
-    location,
-    category,
-    rentalType,
-    minPrice,
-    maxPrice,
-    sort,
-    page,
-    retry,
-  ]);
+  }, [requestKey]);
 
-  // Reset pagination when filters change
+  /**
+   * Reset pagination when filters change.
+   */
   const resetPage = () => {
     setPage(1);
-    setIsLoading(true);
   };
 
-  // Clear all filters
+  /**
+   * Clear all filters.
+   */
   const clearFilters = () => {
-    resetPage();
+    const params = new URLSearchParams(searchParams.toString());
+
+    params.delete("category");
+    params.delete("page");
+
+    const queryString = params.toString();
+
+    router.replace(
+      queryString ? `${pathname}?${queryString}` : pathname,
+      { scroll: false },
+    );
+
     setSearch("");
     setLocation("");
-    setCategory("All Categories");
     setRentalType("all");
     setMinPrice("");
     setMaxPrice("");
     setSort("newest");
+    setPage(1);
   };
 
-  // Retry failed request
+  /**
+   * Retry failed request.
+   */
   const handleRetry = () => {
-    setIsLoading(true);
     setRetry((value) => value + 1);
   };
 
-  // Pagination handlers
+  /**
+   * Pagination handlers.
+   */
   const handlePreviousPage = () => {
     if (page > 1) {
-      setIsLoading(true);
-      setPage((currentPage) => currentPage - 1);
+      setPage((current) => current - 1);
     }
   };
 
   const handleNextPage = () => {
     if (page < totalPages) {
-      setIsLoading(true);
-      setPage((currentPage) => currentPage + 1);
+      setPage((current) => current + 1);
     }
   };
 
@@ -245,7 +334,7 @@ function EquipmentListingContent({
             </div>
           </div>
 
-          {/* Location filter */}
+          {/* Location */}
           <div>
             <label
               htmlFor="equipment-location"
@@ -271,7 +360,7 @@ function EquipmentListingContent({
             </div>
           </div>
 
-          {/* Category filter */}
+          {/* Category */}
           <div>
             <label
               htmlFor="equipment-category"
@@ -285,16 +374,17 @@ function EquipmentListingContent({
 
               <select
                 id="equipment-category"
-                value={category}
-                onChange={(event) => {
-                  resetPage();
-                  setCategory(event.target.value);
-                }}
+                value={categoryId}
+                onChange={(event) =>
+                  handleCategoryChange(event.target.value)
+                }
                 className="h-11 w-full appearance-none rounded-xl border border-input bg-background pl-10 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
               >
-                {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
+                <option value="all">All Categories</option>
+
+                {categoryData.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
                   </option>
                 ))}
               </select>
@@ -375,7 +465,7 @@ function EquipmentListingContent({
             />
           </div>
 
-          {/* Sorting */}
+          {/* Sort */}
           <div>
             <label
               htmlFor="equipment-sort"
@@ -401,7 +491,7 @@ function EquipmentListingContent({
         </div>
       </div>
 
-      {/* Equipment listing */}
+      {/* Equipment results */}
       <div className="mt-10">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -410,7 +500,7 @@ function EquipmentListingContent({
             </h2>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              Showing {equipments.length} of {total} equipment items
+              Showing {isLoading ? 0 : equipments.length} of {isLoading ? "..." : total} equipment items
             </p>
           </div>
 
@@ -469,7 +559,7 @@ function EquipmentListingContent({
                   <button
                     type="button"
                     onClick={handlePreviousPage}
-                    disabled={page <= 1 || isLoading}
+                    disabled={page <= 1}
                     className="rounded-xl border border-input px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Previous
@@ -482,7 +572,7 @@ function EquipmentListingContent({
                   <button
                     type="button"
                     onClick={handleNextPage}
-                    disabled={page >= totalPages || isLoading}
+                    disabled={page >= totalPages}
                     className="rounded-xl border border-input px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Next
